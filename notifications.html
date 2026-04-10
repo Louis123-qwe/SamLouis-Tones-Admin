@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Notifications — Admin</title>
+  <link rel="stylesheet" href="../css/main.css" />
+  <link rel="stylesheet" href="admin.css" />
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-functions-compat.js"></script>
+</head>
+<body>
+<div class="page-loader" id="pageLoader">
+  <div style="text-align:center"><div style="font-size:2.5rem;margin-bottom:12px">⚙️</div><div class="spinner" style="width:28px;height:28px;margin:0 auto"></div></div>
+</div>
+
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar" style="background:#0D1117">
+    <div class="sidebar-logo">
+      <div class="logo-mark">
+        <div class="logo-icon" style="background:linear-gradient(135deg,var(--orange),#c0392b)">⚙️</div>
+        <div class="logo-text">Admin <span style="color:var(--orange)">Panel</span></div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <a href="index.html" class="nav-item"><span class="nav-icon">📊</span> Dashboard</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Content</div>
+        <a href="courses.html" class="nav-item"><span class="nav-icon">📚</span> Courses</a>
+        <a href="lessons.html" class="nav-item"><span class="nav-icon">📖</span> Lessons</a>
+        <a href="content.html" class="nav-item"><span class="nav-icon">📝</span> Content Blocks</a>
+        <a href="marketplace.html" class="nav-item"><span class="nav-icon">🎼</span> Marketplace</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Users & Billing</div>
+        <a href="users.html" class="nav-item"><span class="nav-icon">👥</span> Users</a>
+        <a href="codes.html" class="nav-item"><span class="nav-icon">🎟️</span> Payment Codes</a>
+        <a href="notifications.html" class="nav-item active"><span class="nav-icon">🔔</span> Notifications</a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <a href="../pages/dashboard.html" class="nav-item" style="color:rgba(255,255,255,0.5)"><span class="nav-icon">👁</span> View Site</a>
+      <button class="nav-item" onclick="handleLogout()" style="width:100%;margin-top:4px"><span class="nav-icon">🚪</span> Sign Out</button>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <header class="topbar" style="background:#161B22;border-color:#30363D">
+      <div class="topbar-left">
+        <button class="hamburger btn btn-ghost btn-icon" onclick="toggleSidebar()">☰</button>
+        <h2 style="font-size:1.125rem;font-weight:700;color:white">🔔 Notifications</h2>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-primary" onclick="openSendModal()">+ Send Notification</button>
+      </div>
+    </header>
+
+    <div class="page-content">
+      <!-- Send form card -->
+      <div class="card mb-24" style="border-radius:var(--r-xl);border-left:4px solid var(--azure)">
+        <div style="display:flex;align-items:flex-start;gap:16px">
+          <div style="font-size:2rem">📢</div>
+          <div>
+            <div style="font-weight:700;font-size:1rem;margin-bottom:4px">Broadcast or Targeted Notification</div>
+            <div style="font-size:0.875rem;color:var(--text-secondary)">Send announcements, payment confirmations, or custom messages to all users or a specific user.</div>
+          </div>
+          <button class="btn btn-primary btn-sm" style="flex-shrink:0" onclick="openSendModal()">Send Now</button>
+        </div>
+      </div>
+
+      <!-- Recent notifications log -->
+      <div class="card" style="border-radius:var(--r-xl);overflow:hidden;padding:0">
+        <div style="padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+          <h3 class="t-h3">Recent Notifications</h3>
+          <span class="t-xs t-muted" id="notifCount">Loading...</span>
+        </div>
+        <div id="notifLog">
+          <div style="padding:30px;text-align:center"><div class="spinner" style="width:28px;height:28px;margin:0 auto"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Send Notification Modal -->
+<div class="modal-overlay" id="sendModal">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <span class="modal-title">🔔 Send Notification</span>
+      <button class="modal-close" onclick="closeSendModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="form-group">
+          <label class="form-label">Recipient</label>
+          <select id="notifTarget" class="form-input" onchange="toggleUserSelect()">
+            <option value="all">📢 All Users (Broadcast)</option>
+            <option value="specific">👤 Specific User</option>
+          </select>
+        </div>
+        <div id="specificUserField" style="display:none">
+          <div class="form-group">
+            <label class="form-label">Select User</label>
+            <select id="notifUserId" class="form-input">
+              <option value="">Choose user...</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Notification Type</label>
+          <select id="notifType" class="form-input">
+            <option value="announcement">📢 Announcement</option>
+            <option value="code">🎟️ Payment Code</option>
+            <option value="subscription">💎 Subscription</option>
+            <option value="lesson">📚 New Lesson</option>
+            <option value="reminder">⏰ Reminder</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Title</label>
+          <input type="text" id="notifTitle" class="form-input" placeholder="e.g. Your payment code is ready!" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Message</label>
+          <textarea id="notifMessage" class="form-input" rows="4" placeholder="Enter the full notification message..."></textarea>
+        </div>
+
+        <!-- Preview -->
+        <div style="background:var(--milk);border-radius:var(--r-lg);padding:14px;border:1px solid var(--border)">
+          <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:8px">Preview</div>
+          <div style="display:flex;gap:10px">
+            <div style="font-size:1.25rem" id="previewIcon">📢</div>
+            <div>
+              <div style="font-weight:700;font-size:0.875rem" id="previewTitle">Title</div>
+              <div style="font-size:0.8125rem;color:var(--text-secondary)" id="previewMessage">Message</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeSendModal()">Cancel</button>
+      <button class="btn btn-primary" id="sendBtn" onclick="sendNotification()">
+        <span id="sendBtnText">Send Notification</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<div class="modal-overlay" id="mobileOverlay" onclick="toggleSidebar()"></div>
+
+<script type="module">
+  import { AuthService } from './auth.js';
+  import { UserService } from './db.js';
+  import { db, functions } from './config.js';
+
+  let allUsers = [];
+
+  const TYPE_ICONS = {
+    announcement: '📢', code: '🎟️', subscription: '💎', lesson: '📚', reminder: '⏰'
+  };
+
+  async function init() {
+    await AuthService.requireAdmin();
+    document.getElementById('pageLoader').classList.add('hidden');
+    allUsers = await UserService.getAll();
+
+    // Populate user select
+    const sel = document.getElementById('notifUserId');
+    allUsers.forEach(u => {
+      sel.innerHTML += `<option value="${u.id}">${u.displayName || u.email}</option>`;
+    });
+
+    loadNotifLog();
+    setupPreviewListeners();
+  }
+
+  async function loadNotifLog() {
+    const snap = await db.collection('notifications').orderBy('createdAt', 'desc').limit(50).get();
+    const notifs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    document.getElementById('notifCount').textContent = `${notifs.length} recent notifications`;
+
+    const log = document.getElementById('notifLog');
+    if (!notifs.length) {
+      log.innerHTML = `<div class="empty-state" style="padding:50px"><div class="empty-icon">🔔</div><div class="empty-title">No notifications sent yet</div></div>`;
+      return;
+    }
+
+    log.innerHTML = `
+      <table class="data-table">
+        <thead><tr>
+          <th>Type</th><th>Title</th><th>Message</th><th>Recipient</th><th>Read</th><th>Sent</th>
+        </tr></thead>
+        <tbody>
+        ${notifs.map(n => {
+          const user = allUsers.find(u => u.id === n.userId);
+          return `
+            <tr>
+              <td><span style="font-size:1.25rem">${TYPE_ICONS[n.type] || '🔔'}</span></td>
+              <td style="font-weight:600;font-size:0.875rem">${n.title || '—'}</td>
+              <td style="font-size:0.8125rem;color:var(--text-secondary);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${n.message || '—'}</td>
+              <td style="font-size:0.8125rem">${user ? (user.displayName || user.email) : (n.userId === 'all' ? '📢 All Users' : n.userId?.slice(0,10) + '...')}</td>
+              <td><span class="badge badge-${n.read ? 'gray' : 'blue'}">${n.read ? 'Read' : 'Unread'}</span></td>
+              <td style="font-size:0.8125rem;color:var(--text-muted)">${formatDate(n.createdAt)}</td>
+            </tr>
+          `;
+        }).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  window.toggleUserSelect = () => {
+    const val = document.getElementById('notifTarget').value;
+    document.getElementById('specificUserField').style.display = val === 'specific' ? 'block' : 'none';
+  };
+
+  function setupPreviewListeners() {
+    ['notifTitle','notifMessage','notifType'].forEach(id => {
+      document.getElementById(id).addEventListener('input', updatePreview);
+      document.getElementById(id).addEventListener('change', updatePreview);
+    });
+  }
+
+  function updatePreview() {
+    const title = document.getElementById('notifTitle').value || 'Title';
+    const message = document.getElementById('notifMessage').value || 'Message';
+    const type = document.getElementById('notifType').value;
+    document.getElementById('previewTitle').textContent = title;
+    document.getElementById('previewMessage').textContent = message;
+    document.getElementById('previewIcon').textContent = TYPE_ICONS[type] || '🔔';
+  }
+
+  window.openSendModal = () => {
+    document.getElementById('notifTitle').value = '';
+    document.getElementById('notifMessage').value = '';
+    document.getElementById('notifTarget').value = 'all';
+    document.getElementById('specificUserField').style.display = 'none';
+    updatePreview();
+    document.getElementById('sendModal').classList.add('open');
+  };
+
+  window.closeSendModal = () => document.getElementById('sendModal').classList.remove('open');
+
+  window.sendNotification = async () => {
+    const target = document.getElementById('notifTarget').value;
+    const userId = target === 'all' ? 'all' : document.getElementById('notifUserId').value;
+    const title = document.getElementById('notifTitle').value.trim();
+    const message = document.getElementById('notifMessage').value.trim();
+    const type = document.getElementById('notifType').value;
+
+    if (!title || !message) { showToast('Title and message are required', 'error'); return; }
+    if (target === 'specific' && !userId) { showToast('Please select a user', 'error'); return; }
+
+    document.getElementById('sendBtn').disabled = true;
+    document.getElementById('sendBtnText').textContent = 'Sending...';
+
+    try {
+      const sendFn = functions.httpsCallable('sendNotification');
+      await sendFn({ userId, title, message, type });
+      showToast(target === 'all' ? `Sent to all ${allUsers.length} users!` : 'Notification sent!', 'success');
+      closeSendModal();
+      loadNotifLog();
+    } catch(e) {
+      showToast('Error: ' + e.message, 'error');
+    }
+    document.getElementById('sendBtn').disabled = false;
+    document.getElementById('sendBtnText').textContent = 'Send Notification';
+  };
+
+  function formatDate(ts) {
+    if (!ts) return '—';
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
+  }
+
+  window.toggleSidebar = () => document.getElementById('sidebar').classList.toggle('mobile-open');
+  window.handleLogout = () => AuthService.logout();
+  window.showToast = (msg, type = 'info') => {
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    t.textContent = msg;
+    document.getElementById('toast-container').appendChild(t);
+    setTimeout(() => t.remove(), 4000);
+  };
+
+  init();
+</script>
+</body>
+</html>

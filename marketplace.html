@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Marketplace — Admin</title>
+  <link rel="stylesheet" href="../css/main.css" />
+  <link rel="stylesheet" href="admin.css" />
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-functions-compat.js"></script>
+</head>
+<body>
+<div class="page-loader" id="pageLoader">
+  <div style="text-align:center"><div style="font-size:2.5rem;margin-bottom:12px">⚙️</div><div class="spinner" style="width:28px;height:28px;margin:0 auto"></div></div>
+</div>
+
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar" style="background:#0D1117">
+    <div class="sidebar-logo">
+      <div class="logo-mark">
+        <div class="logo-icon" style="background:linear-gradient(135deg,var(--orange),#c0392b)">⚙️</div>
+        <div class="logo-text">Admin <span style="color:var(--orange)">Panel</span></div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <a href="index.html" class="nav-item"><span class="nav-icon">📊</span> Dashboard</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Content</div>
+        <a href="courses.html" class="nav-item"><span class="nav-icon">📚</span> Courses</a>
+        <a href="lessons.html" class="nav-item"><span class="nav-icon">📖</span> Lessons</a>
+        <a href="content.html" class="nav-item"><span class="nav-icon">📝</span> Content Blocks</a>
+        <a href="marketplace.html" class="nav-item active"><span class="nav-icon">🎼</span> Marketplace</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Users & Billing</div>
+        <a href="users.html" class="nav-item"><span class="nav-icon">👥</span> Users</a>
+        <a href="codes.html" class="nav-item"><span class="nav-icon">🎟️</span> Payment Codes</a>
+        <a href="notifications.html" class="nav-item"><span class="nav-icon">🔔</span> Notifications</a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <a href="../pages/dashboard.html" class="nav-item" style="color:rgba(255,255,255,0.5)"><span class="nav-icon">👁</span> View Site</a>
+      <button class="nav-item" onclick="handleLogout()" style="width:100%;margin-top:4px"><span class="nav-icon">🚪</span> Sign Out</button>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <header class="topbar" style="background:#161B22;border-color:#30363D">
+      <div class="topbar-left">
+        <button class="hamburger btn btn-ghost btn-icon" onclick="toggleSidebar()">☰</button>
+        <h2 style="font-size:1.125rem;font-weight:700;color:white">🎼 Marketplace Management</h2>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-primary" onclick="openItemModal()">+ Add Item</button>
+      </div>
+    </header>
+
+    <div class="page-content">
+      <!-- Unlock access section -->
+      <div class="card mb-20" style="border-radius:var(--r-xl);border-left:4px solid var(--orange)">
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+          <div style="font-size:2rem">🔓</div>
+          <div style="flex:1">
+            <div style="font-weight:700;margin-bottom:2px">Grant Item Access</div>
+            <div style="font-size:0.875rem;color:var(--text-secondary)">Manually unlock a marketplace item for a specific user after payment confirmation.</div>
+          </div>
+          <button class="btn btn-orange btn-sm" onclick="openUnlockModal()">Unlock for User</button>
+        </div>
+      </div>
+
+      <div class="card" style="border-radius:var(--r-xl);overflow:hidden;padding:0">
+        <div id="itemsTable">
+          <div style="padding:30px;text-align:center"><div class="spinner" style="width:28px;height:28px;margin:0 auto"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit Item Modal -->
+<div class="modal-overlay" id="itemModal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <span class="modal-title" id="itemModalTitle">Add Marketplace Item</span>
+      <button class="modal-close" onclick="closeItemModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="form-group">
+          <label class="form-label">Title</label>
+          <input type="text" id="itemTitle" class="form-input" placeholder="e.g. Beethoven Piano Sonata Score" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <textarea id="itemDesc" class="form-input" rows="3" placeholder="Brief description of this item..."></textarea>
+        </div>
+        <div class="grid grid-2 gap-16">
+          <div class="form-group">
+            <label class="form-label">Price (₦)</label>
+            <input type="number" id="itemPrice" class="form-input" placeholder="0" min="0" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Icon (emoji)</label>
+            <input type="text" id="itemIcon" class="form-input" placeholder="🎵" maxlength="4" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Category</label>
+          <select id="itemCategory" class="form-input">
+            <option value="score">🎼 Musical Score</option>
+            <option value="script">📄 Performance Script</option>
+            <option value="guide">📚 Study Guide</option>
+            <option value="audio">🎵 Audio File</option>
+            <option value="other">📦 Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Cloudinary File URL</label>
+          <input type="url" id="itemFileUrl" class="form-input" placeholder="https://res.cloudinary.com/..." />
+          <div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px">Upload the file to Cloudinary first, then paste the URL here.</div>
+        </div>
+    <div class="form-group">
+  <label class="form-label">Item Thumbnail</label>
+  <div style="display:flex; gap:12px; align-items:center;">
+    <input type="hidden" id="itemThumb" />
+    <input type="file" id="itemFilePicker" class="form-input" accept="image/*" onchange="handleFileUpload(this, 'itemThumb', 'uploadStatus')" />
+    <div id="imagePreview" style="width:48px; height:48px; border-radius:8px; background:#30363D; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1px solid #444;">
+      <span>🖼️</span>
+    </div>
+  </div>
+  <div id="uploadStatus" style="font-size:0.75rem; margin-top:4px; color:var(--text-muted)">Upload thumbnail</div>
+</div>
+
+<div class="form-group">
+  <label class="form-label">Marketplace File (PDF/Score)</label>
+  <div style="display:flex; gap:12px; align-items:center;">
+    <input type="hidden" id="itemFileUrl" />
+    <input type="file" id="pdfFilePicker" class="form-input" accept=".pdf,.zip,.mp3" onchange="handleFileUpload(this, 'itemFileUrl', 'fileStatus')" />
+  </div>
+  <div id="fileStatus" style="font-size:0.75rem; margin-top:4px; color:var(--text-muted)">Upload the score or script file</div>
+</div>
+
+
+
+          <label class="form-label">Access</label>
+          <select id="itemAccess" class="form-input">
+            <option value="free">🟢 Free — Anyone can download</option>
+            <option value="paid">🔒 Paid — Requires admin unlock</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeItemModal()">Cancel</button>
+      <button class="btn btn-primary" id="saveItemBtn" onclick="saveItem()">
+        <span id="saveItemText">Save Item</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Unlock Access Modal -->
+<div class="modal-overlay" id="unlockModal">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <span class="modal-title">🔓 Unlock Item for User</span>
+      <button class="modal-close" onclick="closeUnlockModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="form-group">
+          <label class="form-label">Select User</label>
+          <select id="unlockUserId" class="form-input">
+            <option value="">Choose user...</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Select Item</label>
+          <select id="unlockItemId" class="form-input">
+            <option value="">Choose item...</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeUnlockModal()">Cancel</button>
+      <button class="btn btn-orange" id="unlockBtn" onclick="grantAccess()">
+        <span id="unlockBtnText">Grant Access</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<div class="modal-overlay" id="mobileOverlay" onclick="toggleSidebar()"></div>
+
+<script type="module">
+  import { AuthService } from './auth.js';
+  import { MarketplaceService, UserService } from './db.js';
+  import { functions } from './config.js';
+
+  let allItems = [], allUsers = [], editingItemId = null;
+
+  async function init() {
+    await AuthService.requireAdmin();
+    document.getElementById('pageLoader').classList.add('hidden');
+    [allItems, allUsers] = await Promise.all([MarketplaceService.getAll(), UserService.getAll()]);
+
+    // Populate unlock selects
+    const userSel = document.getElementById('unlockUserId');
+    allUsers.forEach(u => userSel.innerHTML += `<option value="${u.id}">${u.displayName || u.email}</option>`);
+
+    renderItems();
+  }
+
+  function renderItems() {
+    const container = document.getElementById('itemsTable');
+    if (!allItems.length) {
+      container.innerHTML = `<div class="empty-state" style="padding:60px"><div class="empty-icon">🎼</div><div class="empty-title">No marketplace items</div><div class="empty-sub">Add your first item to the marketplace.</div></div>`;
+      return;
+    }
+
+    // Refresh unlock item select
+    const itemSel = document.getElementById('unlockItemId');
+    itemSel.innerHTML = `<option value="">Choose item...</option>` +
+      allItems.map(i => `<option value="${i.id}">${i.title}</option>`).join('');
+
+    container.innerHTML = `
+      <table class="data-table">
+        <thead><tr>
+          <th>Item</th><th>Category</th><th>Price</th><th>Access</th><th>File</th><th>Actions</th>
+        </tr></thead>
+        <tbody>
+        ${allItems.map(item => `
+          <tr>
+            <td>
+              <div style="display:flex;align-items:center;gap:10px">
+                <div style="font-size:1.5rem">${item.icon || '🎵'}</div>
+                <div>
+                  <div style="font-weight:600;font-size:0.875rem">${item.title}</div>
+                  <div style="font-size:0.75rem;color:var(--text-muted)">${item.description?.slice(0,50) || ''}</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="badge badge-gray">${item.category || 'other'}</span></td>
+            <td style="font-weight:700;color:var(--azure)">${item.price === 0 || !item.price ? 'Free' : '₦' + Number(item.price).toLocaleString()}</td>
+            <td><span class="badge badge-${item.requiredPlan === 'free' || item.access === 'free' ? 'green' : 'orange'}">${item.access === 'free' ? '🟢 Free' : '🔒 Paid'}</span></td>
+            <td>${item.fileUrl
+              ? `<a href="${item.fileUrl}" target="_blank" class="btn btn-ghost btn-sm">↗ View</a>`
+              : '<span style="color:var(--text-muted);font-size:0.8125rem">No file</span>'
+            }</td>
+            <td>
+              <div style="display:flex;gap:6px">
+                <button class="btn btn-ghost btn-sm" onclick="editItem('${item.id}')">✏️ Edit</button>
+                <button class="btn btn-sm" style="color:var(--error)" onclick="deleteItem('${item.id}','${item.title}')">🗑️</button>
+              </div>
+            </td>
+          </tr>
+        `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  window.openItemModal = () => {
+    editingItemId = null;
+    document.getElementById('itemModalTitle').textContent = 'Add Marketplace Item';
+    document.getElementById('saveItemText').textContent = 'Save Item';
+    ['itemTitle','itemDesc','itemFileUrl','itemThumb','itemIcon'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('itemPrice').value = '';
+    document.getElementById('itemCategory').value = 'score';
+    document.getElementById('itemAccess').value = 'paid';
+    document.getElementById('itemModal').classList.add('open');
+  };
+
+  window.editItem = (id) => {
+    const item = allItems.find(i => i.id === id);
+    if (!item) return;
+    editingItemId = id;
+    document.getElementById('itemModalTitle').textContent = 'Edit Item';
+    document.getElementById('saveItemText').textContent = 'Update Item';
+    document.getElementById('itemTitle').value = item.title || '';
+    document.getElementById('itemDesc').value = item.description || '';
+    document.getElementById('itemPrice').value = item.price || '';
+    document.getElementById('itemIcon').value = item.icon || '';
+    document.getElementById('itemCategory').value = item.category || 'score';
+    document.getElementById('itemFileUrl').value = item.fileUrl || '';
+    document.getElementById('itemThumb').value = item.thumbnailUrl || '';
+    document.getElementById('itemAccess').value = item.access || 'paid';
+    document.getElementById('itemModal').classList.add('open');
+  };
+
+  window.closeItemModal = () => document.getElementById('itemModal').classList.remove('open');
+
+  window.saveItem = async () => {
+    const title = document.getElementById('itemTitle').value.trim();
+    if (!title) { showToast('Title is required', 'error'); return; }
+
+    const data = {
+      title,
+      description: document.getElementById('itemDesc').value.trim(),
+      price: parseFloat(document.getElementById('itemPrice').value) || 0,
+      icon: document.getElementById('itemIcon').value.trim() || '🎵',
+      category: document.getElementById('itemCategory').value,
+      fileUrl: document.getElementById('itemFileUrl').value.trim(),
+      thumbnailUrl: document.getElementById('itemThumb').value.trim(),
+      access: document.getElementById('itemAccess').value
+    };
+
+    document.getElementById('saveItemBtn').disabled = true;
+    document.getElementById('saveItemText').textContent = 'Saving...';
+    try {
+      if (editingItemId) {
+        await MarketplaceService.update(editingItemId, data);
+        const idx = allItems.findIndex(i => i.id === editingItemId);
+        if (idx >= 0) allItems[idx] = { id: editingItemId, ...data };
+      } else {
+        const ref = await MarketplaceService.create(data);
+        allItems.unshift({ id: ref.id, ...data });
+      }
+      showToast('Item saved!', 'success');
+      closeItemModal();
+      renderItems();
+    } catch(e) {
+      showToast('Error: ' + e.message, 'error');
+    }
+    document.getElementById('saveItemBtn').disabled = false;
+    document.getElementById('saveItemText').textContent = editingItemId ? 'Update Item' : 'Save Item';
+  };
+
+  window.deleteItem = async (id, title) => {
+    if (!confirm(`Delete "${title}"?`)) return;
+    await MarketplaceService.delete(id);
+    allItems = allItems.filter(i => i.id !== id);
+    renderItems();
+    showToast('Item deleted', 'success');
+  };
+
+  window.openUnlockModal = () => document.getElementById('unlockModal').classList.add('open');
+  window.closeUnlockModal = () => document.getElementById('unlockModal').classList.remove('open');
+
+  window.grantAccess = async () => {
+    const userId = document.getElementById('unlockUserId').value;
+    const itemId = document.getElementById('unlockItemId').value;
+    if (!userId || !itemId) { showToast('Please select both user and item', 'error'); return; }
+
+    document.getElementById('unlockBtn').disabled = true;
+    document.getElementById('unlockBtnText').textContent = 'Granting...';
+    try {
+      const unlockFn = functions.httpsCallable('unlockMarketplaceItem');
+      await unlockFn({ userId, itemId });
+      showToast('Access granted!', 'success');
+      closeUnlockModal();
+    } catch(e) {
+      showToast('Error: ' + e.message, 'error');
+    }
+    document.getElementById('unlockBtn').disabled = false;
+    document.getElementById('unlockBtnText').textContent = 'Grant Access';
+  };
+
+  window.toggleSidebar = () => document.getElementById('sidebar').classList.toggle('mobile-open');
+  window.handleLogout = () => AuthService.logout();
+  window.showToast = (msg, type = 'info') => {
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    t.textContent = msg;
+    document.getElementById('toast-container').appendChild(t);
+    setTimeout(() => t.remove(), 4000);
+  };
+
+
+// --- CLOUDINARY CONFIG ---
+// Use 'auto' instead of 'image' to allow PDF, Zip, and MP3 uploads
+const CLOUDINARY_URL = "https://api.cloudinary.com/v1_1/dhetav9az/auto/upload";
+const UPLOAD_PRESET = "SamLouis";
+
+
+/**
+ * UPDATED: Reusable Upload Function
+ * @param {HTMLInputElement} input - The file input element
+ * @param {string} hiddenInputId - ID of the hidden input to store the URL
+ * @param {string} statusId - ID of the text element to show progress
+ */
+window.handleFileUpload = async (input, hiddenInputId, statusId) => {
+  const file = input.files[0];
+  if (!file) return;
+
+  const status = document.getElementById(statusId);
+  const hiddenInput = document.getElementById(hiddenInputId);
+
+  status.textContent = "Uploading...";
+  status.style.color = "var(--azure)";
+
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('upload_preset', UPLOAD_PRESET);
+
+  try {
+    const response = await fetch(CLOUDINARY_URL, { method: 'POST', body: formData });
+    const data = await response.json();
+
+    if (data.secure_url) {
+      hiddenInput.value = data.secure_url;
+      status.textContent = `✅ ${file.name.slice(0, 15)}... uploaded`;
+      status.style.color = "#2ecc71";
+      
+      // If this was the thumbnail, update the preview box
+      if (hiddenInputId === 'itemThumb') {
+        document.getElementById('imagePreview').innerHTML = 
+          `<img src="${data.secure_url}" style="width:100%; height:100%; object-fit:cover;" />`;
+      }
+    } else {
+      throw new Error(data.error?.message || "Upload failed");
+    }
+  } catch (error) {
+    console.error("Cloudinary Error:", error);
+    status.textContent = "❌ Error: " + error.message;
+    status.style.color = "var(--error)";
+  }
+};
+
+// --- MODAL UPDATES ---
+
+window.openItemModal = () => {
+  editingItemId = null;
+  document.getElementById('itemModalTitle').textContent = 'Add Marketplace Item';
+  document.getElementById('saveItemText').textContent = 'Save Item';
+  
+  // Clear all standard fields
+  // This checks if the element exists before trying to set its value
+['itemTitle','itemDesc','itemPrice','itemIcon','itemFileUrl','itemThumb','itemFilePicker','pdfFilePicker'].forEach(id => {
+   const el = document.getElementById(id);
+   if (el) el.value = ''; 
+});
+
+  // Clear hidden URL fields and File Pickers
+  ['itemFileUrl', 'itemThumb', 'itemFilePicker', 'pdfFilePicker'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  
+  // Reset UI elements
+  document.getElementById('imagePreview').innerHTML = '<span>🖼️</span>';
+  document.getElementById('uploadStatus').textContent = 'Upload thumbnail';
+  document.getElementById('fileStatus').textContent = 'Upload score/script (PDF)';
+  
+  document.getElementById('itemCategory').value = 'score';
+  document.getElementById('itemAccess').value = 'paid';
+  document.getElementById('itemModal').classList.add('open');
+};
+
+window.editItem = (id) => {
+  const item = allItems.find(i => i.id === id);
+  if (!item) return;
+  editingItemId = id;
+  
+  document.getElementById('itemModalTitle').textContent = 'Edit Item';
+  document.getElementById('saveItemText').textContent = 'Update Item';
+  
+  document.getElementById('itemTitle').value = item.title || '';
+  document.getElementById('itemDesc').value = item.description || '';
+  document.getElementById('itemPrice').value = item.price || '';
+  document.getElementById('itemIcon').value = item.icon || '';
+  document.getElementById('itemCategory').value = item.category || 'score';
+  
+  // Populate hidden URL fields
+  const thumbUrl = item.thumbnailUrl || '';
+  const fileUrl = item.fileUrl || '';
+  document.getElementById('itemThumb').value = thumbUrl;
+  document.getElementById('itemFileUrl').value = fileUrl;
+
+  // Update UI Status
+  if (thumbUrl) {
+    document.getElementById('imagePreview').innerHTML = `<img src="${thumbUrl}" style="width:100%; height:100%; object-fit:cover;" />`;
+    document.getElementById('uploadStatus').textContent = "✅ Thumbnail loaded";
+  }
+  
+  if (fileUrl) {
+    document.getElementById('fileStatus').textContent = "✅ File currently linked";
+    document.getElementById('fileStatus').style.color = "#2ecc71";
+  }
+  
+  document.getElementById('itemAccess').value = item.access || 'paid';
+  document.getElementById('itemModal').classList.add('open');
+};
+
+  init();
+</script>
+</body>
+</html>

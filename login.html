@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Login — Music Club</title>
+  <link rel="stylesheet" href="main.css" />
+  <link rel="stylesheet" href="admin.css" />
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+</head>
+<body style="background:var(--deep-blue); display:flex; align-items:center; justify-content:center; min-height:100vh;">
+
+<div class="card" style="width:100%; max-width:400px; padding:40px;">
+  <div style="text-align:center; margin-bottom:32px;">
+    <div class="logo-icon" style="margin:0 auto 16px; background:linear-gradient(135deg,var(--orange),#c0392b)">⚙️</div>
+    <h1 class="t-h2" style="color:var(--deep-blue)">Admin Login</h1>
+    <p class="t-sm t-muted">Enter your credentials to access the panel</p>
+  </div>
+
+  <form id="loginForm" class="flex flex-col gap-16">
+    <div class="form-group">
+      <label class="form-label">Email Address</label>
+      <input type="email" id="email" class="form-input" placeholder="admin@musicclub.com" required />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Password</label>
+      <input type="password" id="password" class="form-input" placeholder="••••••••" required />
+    </div>
+    <button type="submit" class="btn btn-primary btn-block" style="margin-top:8px;">Sign In</button>
+  </form>
+  
+  <div id="errorMessage" style="color:var(--error); font-size:0.8125rem; margin-top:16px; text-align:center; display:none;"></div>
+</div>
+
+<script type="module">
+  import { AuthService } from './auth.js';
+
+  const loginForm = document.getElementById('loginForm');
+  const errorDiv = document.getElementById('errorMessage');
+
+  loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorDiv.style.display = 'none';
+    
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+
+    try {
+      await AuthService.login(email, password);
+      // If login is successful, redirect to the dashboard
+      window.location.href = 'index.html';
+    } catch (error) {
+      errorDiv.textContent = "Login failed: " + error.message;
+      errorDiv.style.display = 'block';
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Payment Codes — Admin</title>
+  <link rel="stylesheet" href="../css/main.css" />
+  <link rel="stylesheet" href="admin.css" />
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-functions-compat.js"></script>
+</head>
+<body>
+<div class="page-loader" id="pageLoader">
+  <div style="text-align:center"><div style="font-size:2.5rem;margin-bottom:12px">⚙️</div><div class="spinner" style="width:28px;height:28px;margin:0 auto"></div></div>
+</div>
+
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar" style="background:#0D1117">
+    <div class="sidebar-logo">
+      <div class="logo-mark">
+        <div class="logo-icon" style="background:linear-gradient(135deg,var(--orange),#c0392b)">⚙️</div>
+        <div class="logo-text">Admin <span style="color:var(--orange)">Panel</span></div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <a href="index.html" class="nav-item"><span class="nav-icon">📊</span> Dashboard</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Content</div>
+        <a href="courses.html" class="nav-item"><span class="nav-icon">📚</span> Courses</a>
+        <a href="lessons.html" class="nav-item"><span class="nav-icon">📖</span> Lessons</a>
+        <a href="content.html" class="nav-item"><span class="nav-icon">📝</span> Content Blocks</a>
+        <a href="marketplace.html" class="nav-item"><span class="nav-icon">🎼</span> Marketplace</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Users & Billing</div>
+        <a href="users.html" class="nav-item"><span class="nav-icon">👥</span> Users</a>
+        <a href="codes.html" class="nav-item active"><span class="nav-icon">🎟️</span> Payment Codes</a>
+        <a href="notifications.html" class="nav-item"><span class="nav-icon">🔔</span> Notifications</a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <a href="../pages/dashboard.html" class="nav-item" style="color:rgba(255,255,255,0.5)"><span class="nav-icon">👁</span> View Site</a>
+      <button class="nav-item" onclick="handleLogout()" style="width:100%;margin-top:4px"><span class="nav-icon">🚪</span> Sign Out</button>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <header class="topbar" style="background:#161B22;border-color:#30363D">
+      <div class="topbar-left">
+        <button class="hamburger btn btn-ghost btn-icon" onclick="toggleSidebar()">☰</button>
+        <h2 style="font-size:1.125rem;font-weight:700;color:white">🎟️ Payment Codes</h2>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-orange" onclick="openGenerateModal()">+ Generate Code</button>
+      </div>
+    </header>
+
+    <div class="page-content">
+      <!-- Stats -->
+      <div class="stat-grid mb-24 stagger-children">
+        <div class="stat-card admin-stat">
+          <div class="stat-card-header">
+            <div><div class="stat-label">Total Codes</div><div class="stat-value" id="statTotal">—</div></div>
+            <div class="stat-icon blue">🎟️</div>
+          </div>
+        </div>
+        <div class="stat-card admin-stat" style="border-color:var(--success)">
+          <div class="stat-card-header">
+            <div><div class="stat-label">Unused</div><div class="stat-value" id="statUnused">—</div></div>
+            <div class="stat-icon green">✅</div>
+          </div>
+        </div>
+        <div class="stat-card admin-stat" style="border-color:var(--text-muted)">
+          <div class="stat-card-header">
+            <div><div class="stat-label">Used</div><div class="stat-value" id="statUsed">—</div></div>
+            <div class="stat-icon purple">✔️</div>
+          </div>
+        </div>
+        <div class="stat-card admin-stat" style="border-color:var(--orange)">
+          <div class="stat-card-header">
+            <div><div class="stat-label">Premium Codes</div><div class="stat-value" id="statPremium">—</div></div>
+            <div class="stat-icon orange">👑</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filter -->
+      <div class="flex gap-12 mb-20 flex-wrap">
+        <select id="statusFilter" class="form-input" style="width:auto" onchange="filterCodes()">
+          <option value="">All Statuses</option>
+          <option value="unused">Unused</option>
+          <option value="used">Used</option>
+        </select>
+        <select id="planFilter" class="form-input" style="width:auto" onchange="filterCodes()">
+          <option value="">All Plans</option>
+          <option value="course">Course</option>
+          <option value="premium">Premium</option>
+        </select>
+        <input type="text" id="searchCode" class="form-input" placeholder="🔍 Search code or email..." style="width:240px" oninput="filterCodes()" />
+      </div>
+
+      <div class="card" style="border-radius:var(--r-xl);overflow:hidden;padding:0">
+        <div id="codesTable">
+          <div style="padding:30px;text-align:center"><div class="spinner" style="width:28px;height:28px;margin:0 auto"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Generate Code Modal -->
+<div class="modal-overlay" id="generateModal">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-header">
+      <span class="modal-title">🎟️ Generate Payment Code</span>
+      <button class="modal-close" onclick="closeGenerateModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="form-group">
+          <label class="form-label">Plan Type</label>
+          <select id="codePlan" class="form-input">
+            <option value="course">📚 Course Plan</option>
+            <option value="premium">👑 Premium Plan</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Assign to User (optional)</label>
+          <input type="text" id="codeUserId" class="form-input" placeholder="User ID or leave blank for unassigned" />
+          <div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px">If assigned, only that user can redeem this code.</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Expiry (days from now)</label>
+          <input type="number" id="codeExpiry" class="form-input" placeholder="e.g. 30 — leave blank for no expiry" min="1" />
+        </div>
+
+        <!-- Generated code display -->
+        <div id="generatedCodeDisplay" style="display:none">
+          <div style="background:var(--deep-blue);border-radius:var(--r-lg);padding:20px;text-align:center">
+            <div style="font-size:0.8125rem;color:rgba(255,255,255,0.5);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.1em">Generated Code</div>
+            <div id="generatedCodeValue" style="font-family:'Space Mono',monospace;font-size:1.5rem;font-weight:700;color:white;letter-spacing:0.1em"></div>
+            <button class="btn btn-sm mt-12" style="background:rgba(255,255,255,0.15);color:white" onclick="copyCode()">📋 Copy Code</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeGenerateModal()">Close</button>
+      <button class="btn btn-orange" id="generateBtn" onclick="generateCode()">
+        <span id="generateBtnText">Generate Code</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<div class="modal-overlay" id="mobileOverlay" onclick="toggleSidebar()"></div>
+
+<script type="module">
+  import { AuthService } from './auth.js';
+  import { PaymentCodeService, UserService } from './db.js';
+  import { functions } from './config.js';
+
+  let allCodes = [], allUsers = [], currentAdminId = null;
+
+  async function init() {
+    const { user } = await AuthService.requireAdmin();
+    currentAdminId = user.uid;
+    document.getElementById('pageLoader').classList.add('hidden');
+
+    // Pre-select user if in URL
+    const params = new URLSearchParams(window.location.search);
+    const userId = params.get('userId');
+    if (userId) document.getElementById('codeUserId').value = userId;
+
+    [allCodes, allUsers] = await Promise.all([
+      PaymentCodeService.getAll(),
+      UserService.getAll()
+    ]);
+    updateStats();
+    renderCodes(allCodes);
+  }
+
+  function updateStats() {
+    document.getElementById('statTotal').textContent = allCodes.length;
+    document.getElementById('statUnused').textContent = allCodes.filter(c => c.status === 'unused').length;
+    document.getElementById('statUsed').textContent = allCodes.filter(c => c.status === 'used').length;
+    document.getElementById('statPremium').textContent = allCodes.filter(c => c.plan === 'premium').length;
+  }
+
+  function getUserName(uid) {
+    if (!uid) return '—';
+    const u = allUsers.find(u => u.id === uid);
+    return u ? (u.displayName || u.email) : uid.slice(0, 12) + '...';
+  }
+
+  function renderCodes(codes) {
+    const container = document.getElementById('codesTable');
+    if (!codes.length) {
+      container.innerHTML = `<div class="empty-state" style="padding:60px"><div class="empty-icon">🎟️</div><div class="empty-title">No codes found</div></div>`;
+      return;
+    }
+    container.innerHTML = `
+      <table class="data-table">
+        <thead><tr>
+          <th>Code</th><th>Plan</th><th>Assigned To</th><th>Status</th><th>Expires</th><th>Created</th><th>Actions</th>
+        </tr></thead>
+        <tbody>
+        ${codes.map(c => `
+          <tr>
+            <td>
+              <span style="font-family:'Space Mono',monospace;font-weight:700;font-size:0.9375rem;color:var(--azure);cursor:pointer" onclick="copyText('${c.code}')" title="Click to copy">
+                ${c.code}
+              </span>
+            </td>
+            <td>
+              <span class="badge badge-${c.plan === 'premium' ? 'premium' : 'course'}">
+                ${c.plan === 'premium' ? '👑' : '📚'} ${c.plan}
+              </span>
+            </td>
+            <td style="font-size:0.8125rem">${getUserName(c.assignedUserId)}</td>
+            <td>
+              <span class="badge badge-${c.status === 'unused' ? 'green' : 'gray'}">
+                ${c.status === 'unused' ? '✅ Unused' : '✔️ Used'}
+              </span>
+            </td>
+            <td style="font-size:0.8125rem;color:var(--text-muted)">${c.expiresAt ? formatDate(c.expiresAt) : 'No expiry'}</td>
+            <td style="font-size:0.8125rem;color:var(--text-muted)">${formatDate(c.createdAt)}</td>
+            <td>
+              <button class="btn btn-sm" style="color:var(--error)" onclick="deleteCode('${c.id}','${c.code}')"
+                ${c.status === 'used' ? 'disabled title="Cannot delete used code"' : ''}>🗑️</button>
+            </td>
+          </tr>
+        `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  window.filterCodes = () => {
+    const status = document.getElementById('statusFilter').value;
+    const plan = document.getElementById('planFilter').value;
+    const q = document.getElementById('searchCode').value.toLowerCase();
+    const filtered = allCodes.filter(c => {
+      const matchStatus = !status || c.status === status;
+      const matchPlan = !plan || c.plan === plan;
+      const matchQ = !q || c.code.toLowerCase().includes(q) || getUserName(c.assignedUserId).toLowerCase().includes(q);
+      return matchStatus && matchPlan && matchQ;
+    });
+    renderCodes(filtered);
+  };
+
+  window.openGenerateModal = () => {
+    document.getElementById('generatedCodeDisplay').style.display = 'none';
+    document.getElementById('codePlan').value = 'course';
+    document.getElementById('codeExpiry').value = '';
+    document.getElementById('generateModal').classList.add('open');
+  };
+
+  window.closeGenerateModal = () => document.getElementById('generateModal').classList.remove('open');
+
+  window.generateCode = async () => {
+    const plan = document.getElementById('codePlan').value;
+    const assignedUserId = document.getElementById('codeUserId').value.trim() || null;
+    const expiryDays = parseInt(document.getElementById('codeExpiry').value) || null;
+
+    document.getElementById('generateBtn').disabled = true;
+    document.getElementById('generateBtnText').textContent = 'Generating...';
+
+    try {
+      const genFn = functions.httpsCallable('generatePaymentCode');
+      const result = await genFn({ plan, assignedUserId, expiryDays });
+      const code = result.data.code;
+
+      document.getElementById('generatedCodeValue').textContent = code;
+      document.getElementById('generatedCodeDisplay').style.display = 'block';
+      showToast('Code generated: ' + code, 'success');
+
+      // Refresh list
+      allCodes = await PaymentCodeService.getAll();
+      updateStats();
+      renderCodes(allCodes);
+    } catch(e) {
+      showToast('Error: ' + e.message, 'error');
+    }
+    document.getElementById('generateBtn').disabled = false;
+    document.getElementById('generateBtnText').textContent = 'Generate Code';
+  };
+
+  window.copyCode = () => {
+    const code = document.getElementById('generatedCodeValue').textContent;
+    copyText(code);
+  };
+
+  window.copyText = (text) => {
+    navigator.clipboard.writeText(text).then(() => showToast('Copied: ' + text, 'success'));
+  };
+
+  window.deleteCode = async (id, code) => {
+    if (!confirm(`Delete code "${code}"? This cannot be undone.`)) return;
+    await PaymentCodeService.delete ? await PaymentCodeService.delete(id) : null;
+    allCodes = allCodes.filter(c => c.id !== id);
+    updateStats();
+    renderCodes(allCodes);
+    showToast('Code deleted', 'success');
+  };
+
+  function formatDate(ts) {
+    if (!ts) return '—';
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+  }
+
+  window.toggleSidebar = () => document.getElementById('sidebar').classList.toggle('mobile-open');
+  window.handleLogout = () => AuthService.logout();
+  window.showToast = (msg, type = 'info') => {
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    t.textContent = msg;
+    document.getElementById('toast-container').appendChild(t);
+    setTimeout(() => t.remove(), 4000);
+  };
+
+  init();
+</script>
+</body>
+</html>

@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lessons — Admin</title>
+  <link rel="stylesheet" href="../css/main.css" />
+  <link rel="stylesheet" href="admin.css" />
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-functions-compat.js"></script>
+</head>
+<body>
+<div class="page-loader" id="pageLoader">
+  <div style="text-align:center"><div style="font-size:2.5rem;margin-bottom:12px">⚙️</div><div class="spinner" style="width:28px;height:28px;margin:0 auto"></div></div>
+</div>
+
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar" style="background:#0D1117">
+    <div class="sidebar-logo">
+      <div class="logo-mark">
+        <div class="logo-icon" style="background:linear-gradient(135deg,var(--orange),#c0392b)">⚙️</div>
+        <div class="logo-text">Admin <span style="color:var(--orange)">Panel</span></div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <a href="index.html" class="nav-item"><span class="nav-icon">📊</span> Dashboard</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Content</div>
+        <a href="courses.html" class="nav-item"><span class="nav-icon">📚</span> Courses</a>
+        <a href="lessons.html" class="nav-item active"><span class="nav-icon">📖</span> Lessons</a>
+        <a href="content.html" class="nav-item"><span class="nav-icon">📝</span> Content Blocks</a>
+        <a href="marketplace.html" class="nav-item"><span class="nav-icon">🎼</span> Marketplace</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Users & Billing</div>
+        <a href="users.html" class="nav-item"><span class="nav-icon">👥</span> Users</a>
+        <a href="codes.html" class="nav-item"><span class="nav-icon">🎟️</span> Payment Codes</a>
+        <a href="notifications.html" class="nav-item"><span class="nav-icon">🔔</span> Notifications</a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <a href="../pages/dashboard.html" class="nav-item" style="color:rgba(255,255,255,0.5)"><span class="nav-icon">👁</span> View Site</a>
+      <button class="nav-item" onclick="handleLogout()" style="width:100%;margin-top:4px"><span class="nav-icon">🚪</span> Sign Out</button>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <header class="topbar" style="background:#161B22;border-color:#30363D">
+      <div class="topbar-left">
+        <button class="hamburger btn btn-ghost btn-icon" onclick="toggleSidebar()">☰</button>
+        <h2 style="font-size:1.125rem;font-weight:700;color:white">📖 Lesson Management</h2>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-primary" onclick="openLessonModal()">+ New Lesson</button>
+      </div>
+    </header>
+
+    <div class="page-content">
+      <!-- Course Filter -->
+      <div class="card mb-20" style="border-radius:var(--r-xl);padding:16px 20px">
+        <div class="flex items-center gap-16 flex-wrap">
+          <div style="font-weight:600;font-size:0.9375rem">Filter by Course:</div>
+          <select id="courseFilter" class="form-input" style="width:auto;min-width:240px" onchange="loadLessons()">
+            <option value="">All Courses</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="lessonsList">
+        <div class="card animate-pulse" style="height:200px;border-radius:var(--r-xl)"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Lesson Modal -->
+<div class="modal-overlay" id="lessonModal">
+  <div class="modal" style="max-width:580px">
+    <div class="modal-header">
+      <span class="modal-title" id="lessonModalTitle">New Lesson</span>
+      <button class="modal-close" onclick="closeLessonModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="form-group">
+          <label class="form-label">Course</label>
+          <select id="lessonCourse" class="form-input">
+            <option value="">Select a course...</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Lesson Title</label>
+          <input type="text" id="lessonTitle" class="form-input" placeholder="e.g. Introduction to Music Theory" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <textarea id="lessonDesc" class="form-input" placeholder="Brief overview of what this lesson covers..."></textarea>
+        </div>
+        <div class="grid grid-2 gap-16">
+          <div class="form-group">
+            <label class="form-label">Duration</label>
+            <input type="text" id="lessonDuration" class="form-input" placeholder="e.g. 15 min" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Display Order</label>
+            <input type="number" id="lessonOrder" class="form-input" value="0" min="0" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Has Quiz?</label>
+          <select id="lessonHasQuiz" class="form-input">
+            <option value="false">No Quiz</option>
+            <option value="true">Yes — Add Quiz Questions</option>
+          </select>
+        </div>
+
+        <!-- Quiz Builder (shown if hasQuiz = true) -->
+        <div id="quizBuilder" style="display:none">
+          <div style="background:rgba(43,127,255,0.06);border:1px solid rgba(43,127,255,0.2);border-radius:var(--r-lg);padding:16px">
+            <div class="flex items-center justify-between mb-12">
+              <div style="font-weight:700;color:var(--azure)">📝 Quiz Questions</div>
+              <button class="btn btn-primary btn-sm" onclick="addQuizQuestion()">+ Add Question</button>
+            </div>
+            <div id="quizQuestionsContainer"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeLessonModal()">Cancel</button>
+      <button class="btn btn-primary" id="saveLessonBtn" onclick="saveLesson()">
+        <span id="saveLessonText">Save Lesson</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<div class="modal-overlay" id="mobileOverlay" onclick="toggleSidebar()"></div>
+
+<script type="module">
+  import { AuthService } from './auth.js';
+  import { CourseService, LessonService } from './db.js';
+
+  let courses = [];
+  let editingLessonId = null;
+  let quizQuestions = [];
+
+  async function init() {
+    await AuthService.requireAdmin();
+    document.getElementById('pageLoader').classList.add('hidden');
+    courses = await CourseService.getAll();
+
+    // Populate course selects
+    const opts = courses.map(c => `<option value="${c.id}">${c.title}</option>`).join('');
+    document.getElementById('courseFilter').innerHTML += opts;
+    document.getElementById('lessonCourse').innerHTML = `<option value="">Select a course...</option>` + opts;
+
+    // Pre-select if courseId in URL
+    const params = new URLSearchParams(window.location.search);
+    const preselect = params.get('courseId');
+    if (preselect) {
+      document.getElementById('courseFilter').value = preselect;
+    }
+
+    loadLessons();
+  }
+
+  window.loadLessons = async () => {
+    const courseId = document.getElementById('courseFilter').value;
+    let lessons = [];
+    if (courseId) {
+      lessons = await LessonService.getByCourse(courseId);
+    } else {
+      // Load from all courses
+      const all = await Promise.all(courses.map(c => LessonService.getByCourse(c.id)));
+      lessons = all.flat();
+    }
+
+    const container = document.getElementById('lessonsList');
+    if (!lessons.length) {
+      container.innerHTML = `<div class="empty-state"><div class="empty-icon">📖</div><div class="empty-title">No lessons yet</div><div class="empty-sub">Create your first lesson to get started.</div></div>`;
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="card" style="border-radius:var(--r-xl);overflow:hidden;padding:0">
+        <table class="data-table">
+          <thead><tr>
+            <th>#</th><th>Lesson Title</th><th>Course</th><th>Duration</th><th>Quiz</th><th>Actions</th>
+          </tr></thead>
+          <tbody>
+          ${lessons.map(l => {
+            const course = courses.find(c => c.id === l.courseId);
+            return `
+              <tr>
+                <td style="color:var(--text-muted);font-weight:700">${l.order ?? '—'}</td>
+                <td>
+                  <div style="font-weight:600">${l.title}</div>
+                  <div style="font-size:0.8125rem;color:var(--text-muted)">${l.description?.slice(0,60) || ''}${(l.description?.length||0) > 60 ? '...' : ''}</div>
+                </td>
+                <td><span class="badge badge-blue">${course?.title || l.courseId}</span></td>
+                <td style="color:var(--text-muted)">${l.duration || '—'}</td>
+                <td>${l.hasQuiz ? '<span class="badge badge-green">📝 Yes</span>' : '<span class="badge badge-gray">No</span>'}</td>
+                <td>
+                  <div style="display:flex;gap:6px">
+                    <a href="content.html?lessonId=${l.id}" class="btn btn-ghost btn-sm">📝 Content</a>
+                    <button class="btn btn-ghost btn-sm" onclick="editLesson('${l.id}')">✏️ Edit</button>
+                    <button class="btn btn-sm" style="color:var(--error)" onclick="deleteLesson('${l.id}','${l.courseId}','${l.title}')">🗑️</button>
+                  </div>
+                </td>
+              </tr>
+            `;
+          }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  };
+
+  window.openLessonModal = () => {
+    editingLessonId = null;
+    quizQuestions = [];
+    document.getElementById('lessonModalTitle').textContent = 'New Lesson';
+    document.getElementById('saveLessonText').textContent = 'Save Lesson';
+    document.getElementById('lessonTitle').value = '';
+    document.getElementById('lessonDesc').value = '';
+    document.getElementById('lessonDuration').value = '';
+    document.getElementById('lessonOrder').value = '0';
+    document.getElementById('lessonHasQuiz').value = 'false';
+    document.getElementById('quizBuilder').style.display = 'none';
+    document.getElementById('quizQuestionsContainer').innerHTML = '';
+    const preselect = document.getElementById('courseFilter').value;
+    if (preselect) document.getElementById('lessonCourse').value = preselect;
+    document.getElementById('lessonModal').classList.add('open');
+  };
+
+  window.editLesson = async (id) => {
+    const lesson = await LessonService.get(id);
+    editingLessonId = id;
+    quizQuestions = lesson.quiz || [];
+    document.getElementById('lessonModalTitle').textContent = 'Edit Lesson';
+    document.getElementById('saveLessonText').textContent = 'Update Lesson';
+    document.getElementById('lessonCourse').value = lesson.courseId || '';
+    document.getElementById('lessonTitle').value = lesson.title || '';
+    document.getElementById('lessonDesc').value = lesson.description || '';
+    document.getElementById('lessonDuration').value = lesson.duration || '';
+    document.getElementById('lessonOrder').value = lesson.order || 0;
+    document.getElementById('lessonHasQuiz').value = lesson.hasQuiz ? 'true' : 'false';
+    if (lesson.hasQuiz) {
+      document.getElementById('quizBuilder').style.display = 'block';
+      renderQuizQuestions();
+    }
+    document.getElementById('lessonModal').classList.add('open');
+  };
+
+  window.closeLessonModal = () => document.getElementById('lessonModal').classList.remove('open');
+
+  // Quiz toggling
+  document.getElementById('lessonHasQuiz').addEventListener('change', function() {
+    document.getElementById('quizBuilder').style.display = this.value === 'true' ? 'block' : 'none';
+  });
+
+  window.addQuizQuestion = () => {
+    quizQuestions.push({ question: '', options: ['', '', '', ''], correct: '' });
+    renderQuizQuestions();
+  };
+
+  function renderQuizQuestions() {
+    const container = document.getElementById('quizQuestionsContainer');
+    if (!quizQuestions.length) {
+      container.innerHTML = `<div style="text-align:center;color:var(--text-muted);font-size:0.875rem;padding:10px">No questions yet. Click "+ Add Question".</div>`;
+      return;
+    }
+    container.innerHTML = quizQuestions.map((q, i) => `
+      <div style="background:white;border:1px solid var(--border);border-radius:var(--r-md);padding:14px;margin-bottom:12px">
+        <div class="flex items-center justify-between mb-10">
+          <div style="font-weight:700;font-size:0.875rem;color:var(--azure)">Question ${i+1}</div>
+          <button class="btn btn-sm" style="color:var(--error)" onclick="removeQuestion(${i})">✕ Remove</button>
+        </div>
+        <div class="form-group mb-10">
+          <input type="text" class="form-input" placeholder="Enter question..." value="${q.question}"
+            oninput="quizQuestions[${i}].question=this.value" />
+        </div>
+        <div style="font-size:0.8125rem;font-weight:600;color:var(--text-secondary);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em">Options (click radio to set correct answer)</div>
+        ${q.options.map((opt, j) => `
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <input type="radio" name="correct_${i}" ${q.correct === opt && opt ? 'checked' : ''}
+              onchange="quizQuestions[${i}].correct=quizQuestions[${i}].options[${j}]" />
+            <input type="text" class="form-input" style="flex:1" placeholder="Option ${String.fromCharCode(65+j)}"
+              value="${opt}" oninput="quizQuestions[${i}].options[${j}]=this.value" />
+          </div>
+        `).join('')}
+      </div>
+    `).join('');
+  }
+
+  window.removeQuestion = (i) => {
+    quizQuestions.splice(i, 1);
+    renderQuizQuestions();
+  };
+
+  window.saveLesson = async () => {
+    const courseId = document.getElementById('lessonCourse').value;
+    const title = document.getElementById('lessonTitle').value.trim();
+    if (!courseId) { showToast('Please select a course', 'error'); return; }
+    if (!title) { showToast('Title is required', 'error'); return; }
+
+    const hasQuiz = document.getElementById('lessonHasQuiz').value === 'true';
+    const data = {
+      courseId,
+      title,
+      description: document.getElementById('lessonDesc').value.trim(),
+      duration: document.getElementById('lessonDuration').value.trim(),
+      order: parseInt(document.getElementById('lessonOrder').value) || 0,
+      hasQuiz,
+      quiz: hasQuiz ? quizQuestions : []
+    };
+
+    document.getElementById('saveLessonBtn').disabled = true;
+    document.getElementById('saveLessonText').textContent = 'Saving...';
+    try {
+      if (editingLessonId) {
+        await LessonService.update(editingLessonId, data);
+      } else {
+        await LessonService.create(courseId, data);
+      }
+      showToast('Lesson saved!', 'success');
+      closeLessonModal();
+      loadLessons();
+    } catch(e) {
+      showToast('Error: ' + e.message, 'error');
+    }
+    document.getElementById('saveLessonBtn').disabled = false;
+    document.getElementById('saveLessonText').textContent = editingLessonId ? 'Update Lesson' : 'Save Lesson';
+  };
+
+  window.deleteLesson = async (id, courseId, title) => {
+    if (!confirm(`Delete lesson "${title}"?`)) return;
+    await LessonService.delete(id, courseId);
+    showToast('Lesson deleted', 'success');
+    loadLessons();
+  };
+
+  window.toggleSidebar = () => document.getElementById('sidebar').classList.toggle('mobile-open');
+  window.handleLogout = () => AuthService.logout();
+  window.showToast = (msg, type = 'info') => {
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    t.textContent = msg;
+    document.getElementById('toast-container').appendChild(t);
+    setTimeout(() => t.remove(), 4000);
+  };
+
+  init();
+</script>
+</body>
+</html>

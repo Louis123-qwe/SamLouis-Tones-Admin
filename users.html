@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Users — Admin</title>
+  <link rel="stylesheet" href="../css/main.css" />
+  <link rel="stylesheet" href="admin.css" />
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-functions-compat.js"></script>
+</head>
+<body>
+<div class="page-loader" id="pageLoader">
+  <div style="text-align:center"><div style="font-size:2.5rem;margin-bottom:12px">⚙️</div><div class="spinner" style="width:28px;height:28px;margin:0 auto"></div></div>
+</div>
+
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar" style="background:#0D1117">
+    <div class="sidebar-logo">
+      <div class="logo-mark">
+        <div class="logo-icon" style="background:linear-gradient(135deg,var(--orange),#c0392b)">⚙️</div>
+        <div class="logo-text">Admin <span style="color:var(--orange)">Panel</span></div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <a href="index.html" class="nav-item"><span class="nav-icon">📊</span> Dashboard</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Content</div>
+        <a href="courses.html" class="nav-item"><span class="nav-icon">📚</span> Courses</a>
+        <a href="lessons.html" class="nav-item"><span class="nav-icon">📖</span> Lessons</a>
+        <a href="content.html" class="nav-item"><span class="nav-icon">📝</span> Content Blocks</a>
+        <a href="marketplace.html" class="nav-item"><span class="nav-icon">🎼</span> Marketplace</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Users & Billing</div>
+        <a href="users.html" class="nav-item active"><span class="nav-icon">👥</span> Users</a>
+        <a href="codes.html" class="nav-item"><span class="nav-icon">🎟️</span> Payment Codes</a>
+        <a href="notifications.html" class="nav-item"><span class="nav-icon">🔔</span> Notifications</a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <a href="../pages/dashboard.html" class="nav-item" style="color:rgba(255,255,255,0.5)"><span class="nav-icon">👁</span> View Site</a>
+      <button class="nav-item" onclick="handleLogout()" style="width:100%;margin-top:4px"><span class="nav-icon">🚪</span> Sign Out</button>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <header class="topbar" style="background:#161B22;border-color:#30363D">
+      <div class="topbar-left">
+        <button class="hamburger btn btn-ghost btn-icon" onclick="toggleSidebar()">☰</button>
+        <h2 style="font-size:1.125rem;font-weight:700;color:white">👥 User Management</h2>
+      </div>
+      <div class="topbar-right">
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" id="searchInput" class="form-input" placeholder="🔍 Search users..." style="width:220px;padding:8px 14px;font-size:0.875rem" oninput="filterUsers()" />
+          <select id="planFilter" class="form-input" style="width:auto" onchange="filterUsers()">
+            <option value="">All Plans</option>
+            <option value="free">Free</option>
+            <option value="course">Course</option>
+            <option value="premium">Premium</option>
+          </select>
+        </div>
+      </div>
+    </header>
+
+    <div class="page-content">
+      <!-- Stats row -->
+      <div class="stat-grid mb-24 stagger-children">
+        <div class="stat-card admin-stat">
+          <div class="stat-card-header">
+            <div><div class="stat-label">Total Users</div><div class="stat-value" id="statTotal">—</div></div>
+            <div class="stat-icon blue">👥</div>
+          </div>
+        </div>
+        <div class="stat-card admin-stat" style="border-color:var(--success)">
+          <div class="stat-card-header">
+            <div><div class="stat-label">Free</div><div class="stat-value" id="statFree">—</div></div>
+            <div class="stat-icon green">🆓</div>
+          </div>
+        </div>
+        <div class="stat-card admin-stat">
+          <div class="stat-card-header">
+            <div><div class="stat-label">Course Plan</div><div class="stat-value" id="statCourse">—</div></div>
+            <div class="stat-icon blue">📚</div>
+          </div>
+        </div>
+        <div class="stat-card admin-stat" style="border-color:var(--orange)">
+          <div class="stat-card-header">
+            <div><div class="stat-label">Premium</div><div class="stat-value" id="statPremium">—</div></div>
+            <div class="stat-icon orange">👑</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="border-radius:var(--r-xl);overflow:hidden;padding:0">
+        <div id="usersTable">
+          <div style="padding:30px;text-align:center"><div class="spinner" style="width:28px;height:28px;margin:0 auto"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- User Detail Modal -->
+<div class="modal-overlay" id="userModal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <span class="modal-title">👤 User Profile</span>
+      <button class="modal-close" onclick="closeUserModal()">✕</button>
+    </div>
+    <div class="modal-body" id="userModalBody"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeUserModal()">Close</button>
+      <button class="btn btn-primary" id="saveUserBtn" onclick="saveUserChanges()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<div class="modal-overlay" id="mobileOverlay" onclick="toggleSidebar()"></div>
+
+<script type="module">
+  import { AuthService } from './auth.js';
+  import { UserService } from './db.js';
+
+  let allUsers = [];
+  let editingUserId = null;
+
+  async function init() {
+    await AuthService.requireAdmin();
+    document.getElementById('pageLoader').classList.add('hidden');
+    allUsers = await UserService.getAll();
+    updateStats();
+    renderUsers(allUsers);
+  }
+
+  function updateStats() {
+    document.getElementById('statTotal').textContent = allUsers.length;
+    document.getElementById('statFree').textContent = allUsers.filter(u => !u.plan || u.plan === 'free').length;
+    document.getElementById('statCourse').textContent = allUsers.filter(u => u.plan === 'course').length;
+    document.getElementById('statPremium').textContent = allUsers.filter(u => u.plan === 'premium').length;
+  }
+
+  function renderUsers(users) {
+    const container = document.getElementById('usersTable');
+    if (!users.length) {
+      container.innerHTML = `<div class="empty-state" style="padding:60px"><div class="empty-icon">👥</div><div class="empty-title">No users found</div></div>`;
+      return;
+    }
+    container.innerHTML = `
+      <table class="data-table">
+        <thead><tr>
+          <th>User</th><th>Email</th><th>Plan</th><th>Points</th><th>Lessons Done</th><th>Joined</th><th>Actions</th>
+        </tr></thead>
+        <tbody>
+        ${users.map(u => `
+          <tr>
+            <td>
+              <div style="display:flex;align-items:center;gap:10px">
+                <div class="avatar avatar-sm">${(u.displayName||u.email||'?')[0].toUpperCase()}</div>
+                <div>
+                  <div style="font-weight:600;font-size:0.875rem">${u.displayName || '—'}</div>
+                  ${u.role === 'admin' ? '<span class="badge badge-orange" style="font-size:0.6875rem">admin</span>' : ''}
+                </div>
+              </div>
+            </td>
+            <td style="font-size:0.8125rem;color:var(--text-secondary)">${u.email || '—'}</td>
+            <td>
+              <span class="badge badge-${u.plan === 'premium' ? 'premium' : u.plan === 'course' ? 'course' : 'gray'}">
+                ${u.plan === 'premium' ? '👑' : u.plan === 'course' ? '📚' : '🆓'} ${u.plan || 'free'}
+              </span>
+            </td>
+            <td style="font-weight:700;color:var(--azure)">${(u.points || 0).toLocaleString()}</td>
+            <td>${(u.completedLessons || []).length}</td>
+            <td style="font-size:0.8125rem;color:var(--text-muted)">${formatDate(u.createdAt)}</td>
+            <td>
+              <div style="display:flex;gap:6px">
+                <button class="btn btn-ghost btn-sm" onclick="openUserModal('${u.id}')">✏️ Edit</button>
+                <a href="codes.html?userId=${u.id}" class="btn btn-ghost btn-sm">🎟️ Code</a>
+              </div>
+            </td>
+          </tr>
+        `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  window.filterUsers = () => {
+    const q = document.getElementById('searchInput').value.toLowerCase();
+    const plan = document.getElementById('planFilter').value;
+    const filtered = allUsers.filter(u => {
+      const matchSearch = !q || (u.displayName||'').toLowerCase().includes(q) || (u.email||'').toLowerCase().includes(q);
+      const matchPlan = !plan || (u.plan || 'free') === plan;
+      return matchSearch && matchPlan;
+    });
+    renderUsers(filtered);
+  };
+
+  window.openUserModal = (uid) => {
+    const user = allUsers.find(u => u.id === uid);
+    if (!user) return;
+    editingUserId = uid;
+    document.getElementById('userModalBody').innerHTML = `
+      <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border)">
+        <div class="avatar avatar-lg">${(user.displayName||'?')[0].toUpperCase()}</div>
+        <div>
+          <div style="font-size:1.125rem;font-weight:700">${user.displayName || '—'}</div>
+          <div style="color:var(--text-muted);font-size:0.875rem">${user.email}</div>
+          <div style="font-size:0.8125rem;color:var(--text-muted);margin-top:2px">UID: ${user.id}</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="grid grid-2 gap-14">
+          <div class="form-group">
+            <label class="form-label">Plan</label>
+            <select id="editPlan" class="form-input">
+              <option value="free" ${user.plan === 'free' || !user.plan ? 'selected' : ''}>🆓 Free</option>
+              <option value="course" ${user.plan === 'course' ? 'selected' : ''}>📚 Course</option>
+              <option value="premium" ${user.plan === 'premium' ? 'selected' : ''}>👑 Premium</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Role</label>
+            <select id="editRole" class="form-input">
+              <option value="" ${!user.role ? 'selected' : ''}>User</option>
+              <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Points</label>
+          <input type="number" id="editPoints" class="form-input" value="${user.points || 0}" min="0" />
+        </div>
+        <div style="background:var(--milk);border-radius:var(--r-md);padding:14px">
+          <div style="font-size:0.8125rem;font-weight:700;color:var(--text-secondary);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em">Activity</div>
+          <div style="display:flex;gap:20px;flex-wrap:wrap">
+            <div><div style="font-size:1.25rem;font-weight:800">${(user.completedLessons||[]).length}</div><div style="font-size:0.75rem;color:var(--text-muted)">Lessons Done</div></div>
+            <div><div style="font-size:1.25rem;font-weight:800">${user.certificatesEarned || 0}</div><div style="font-size:0.75rem;color:var(--text-muted)">Certificates</div></div>
+            <div><div style="font-size:1.25rem;font-weight:800">${formatDate(user.createdAt)}</div><div style="font-size:0.75rem;color:var(--text-muted)">Joined</div></div>
+          </div>
+        </div>
+      </div>
+    `;
+    document.getElementById('userModal').classList.add('open');
+  };
+
+  window.closeUserModal = () => document.getElementById('userModal').classList.remove('open');
+
+  window.saveUserChanges = async () => {
+    const plan = document.getElementById('editPlan').value;
+    const role = document.getElementById('editRole').value;
+    const points = parseInt(document.getElementById('editPoints').value) || 0;
+    document.getElementById('saveUserBtn').disabled = true;
+    try {
+      const update = { plan, points };
+      if (role) update.role = role;
+      else update.role = firebase.firestore.FieldValue.delete();
+      await UserService.update(editingUserId, update);
+      // Update local array
+      const idx = allUsers.findIndex(u => u.id === editingUserId);
+      if (idx >= 0) allUsers[idx] = { ...allUsers[idx], plan, role, points };
+      updateStats();
+      renderUsers(allUsers);
+      showToast('User updated!', 'success');
+      closeUserModal();
+    } catch(e) {
+      showToast('Error: ' + e.message, 'error');
+    }
+    document.getElementById('saveUserBtn').disabled = false;
+  };
+
+  function formatDate(ts) {
+    if (!ts) return '—';
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+  }
+
+  window.toggleSidebar = () => document.getElementById('sidebar').classList.toggle('mobile-open');
+  window.handleLogout = () => AuthService.logout();
+  window.showToast = (msg, type = 'info') => {
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    t.textContent = msg;
+    document.getElementById('toast-container').appendChild(t);
+    setTimeout(() => t.remove(), 4000);
+  };
+
+  init();
+</script>
+</body>
+</html>

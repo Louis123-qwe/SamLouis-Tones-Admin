@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Courses — Admin</title>
+  <link rel="stylesheet" href="main.css" />
+  <link rel="stylesheet" href="admin.css" />
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-functions-compat.js"></script>
+</head>
+<body>
+<div class="page-loader" id="pageLoader"><div style="text-align:center"><div style="font-size:2.5rem;margin-bottom:12px">⚙️</div><div class="spinner" style="width:28px;height:28px;margin:0 auto"></div></div></div>
+
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar" style="background:#0D1117">
+    <div class="sidebar-logo"><div class="logo-mark"><div class="logo-icon" style="background:linear-gradient(135deg,var(--orange),#c0392b)">⚙️</div><div class="logo-text">Admin <span style="color:var(--orange)">Panel</span></div></div></div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <a href="index.html" class="nav-item"><span class="nav-icon">📊</span> Dashboard</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Content</div>
+        <a href="courses.html" class="nav-item active"><span class="nav-icon">📚</span> Courses</a>
+        <a href="lessons.html" class="nav-item"><span class="nav-icon">📖</span> Lessons</a>
+        <a href="content.html" class="nav-item"><span class="nav-icon">📝</span> Content Blocks</a>
+        <a href="marketplace.html" class="nav-item"><span class="nav-icon">🎼</span> Marketplace</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Users & Billing</div>
+        <a href="users.html" class="nav-item"><span class="nav-icon">👥</span> Users</a>
+        <a href="codes.html" class="nav-item"><span class="nav-icon">🎟️</span> Payment Codes</a>
+        <a href="notifications.html" class="nav-item"><span class="nav-icon">🔔</span> Notifications</a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <button class="nav-item" onclick="handleLogout()" style="width:100%;"><span class="nav-icon">🚪</span> Sign Out</button>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <header class="topbar" style="background:#161B22;border-color:#30363D">
+      <div class="topbar-left">
+        <button class="hamburger btn btn-ghost btn-icon" onclick="toggleSidebar()">☰</button>
+        <h2 style="font-size:1.125rem;font-weight:700;color:white">📚 Course Management</h2>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-primary" onclick="openCourseModal()">+ New Course</button>
+      </div>
+    </header>
+    <div class="page-content">
+      <div id="coursesList">
+        <div class="animate-pulse card" style="height:200px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Course Modal -->
+<div class="modal-overlay" id="courseModal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <span class="modal-title" id="courseModalTitle">New Course</span>
+      <button class="modal-close" onclick="closeCourseModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="form-group">
+          <label class="form-label">Course Title</label>
+          <input type="text" id="courseTitle" class="form-input" placeholder="e.g. Piano Fundamentals" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <textarea id="courseDesc" class="form-input" placeholder="Brief description of the course..."></textarea>
+        </div>
+        <div class="grid grid-2 gap-16">
+          <div class="form-group">
+            <label class="form-label">Category</label>
+            <input type="text" id="courseCategory" class="form-input" placeholder="e.g. Piano, Theory" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Icon (emoji)</label>
+            <input type="text" id="courseIcon" class="form-input" placeholder="🎹" maxlength="4" />
+          </div>
+        </div>
+        <div class="grid grid-2 gap-16">
+          <div class="form-group">
+            <label class="form-label">Required Plan</label>
+            <select id="courseRequiredPlan" class="form-input">
+              <option value="free">Free</option>
+              <option value="course">Course Plan</option>
+              <option value="premium">Premium Only</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Display Order</label>
+            <input type="number" id="courseOrder" class="form-input" value="0" min="0" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Thumbnail URL (Cloudinary)</label>
+          <input type="url" id="courseThumbnail" class="form-input" placeholder="https://res.cloudinary.com/..." />
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeCourseModal()">Cancel</button>
+      <button class="btn btn-primary" id="saveCourseBtn" onclick="saveCourse()">
+        <span id="saveCourseText">Save Course</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<div class="modal-overlay" id="mobileOverlay" onclick="toggleSidebar()"></div>
+
+<script type="module">
+  import { AuthService } from './auth.js';
+  import { CourseService, LessonService } from './db.js';
+
+  let editingCourseId = null;
+
+  async function init() {
+    await AuthService.requireAdmin();
+    document.getElementById('pageLoader').classList.add('hidden');
+    loadCourses();
+  }
+
+  async function loadCourses() {
+    const courses = await CourseService.getAll();
+    const container = document.getElementById('coursesList');
+    if (!courses.length) {
+      container.innerHTML = `<div class="empty-state"><div class="empty-icon">📚</div><div class="empty-title">No courses yet</div><div class="empty-sub">Create your first course to get started.</div></div>`;
+      return;
+    }
+    container.innerHTML = `
+      <div class="card" style="border-radius:var(--r-xl);overflow:hidden;padding:0">
+        <table class="data-table">
+          <thead><tr>
+            <th>Course</th><th>Category</th><th>Required Plan</th><th>Lessons</th><th>Order</th><th>Actions</th>
+          </tr></thead>
+          <tbody>
+          ${courses.map(c => `
+            <tr>
+              <td>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <div style="font-size:1.5rem">${c.icon || '🎵'}</div>
+                  <div>
+                    <div style="font-weight:600">${c.title}</div>
+                    <div style="font-size:0.8125rem;color:var(--text-muted)">${c.description?.slice(0,50) || ''}${c.description?.length > 50 ? '...' : ''}</div>
+                  </div>
+                </div>
+              </td>
+              <td><span class="badge badge-gray">${c.category || '—'}</span></td>
+              <td><span class="badge badge-${c.requiredPlan === 'premium' ? 'premium' : c.requiredPlan === 'course' ? 'course' : 'green'}">${c.requiredPlan || 'free'}</span></td>
+              <td>${c.lessonCount || 0}</td>
+              <td>${c.order || 0}</td>
+              <td>
+                <div style="display:flex;gap:6px">
+                  <a href="lessons.html?courseId=${c.id}" class="btn btn-ghost btn-sm">📖 Lessons</a>
+                  <button class="btn btn-ghost btn-sm" onclick="editCourse('${c.id}')">✏️ Edit</button>
+                  <button class="btn btn-sm" style="color:var(--error)" onclick="deleteCourse('${c.id}','${c.title}')">🗑️</button>
+                </div>
+              </td>
+            </tr>
+          `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  window.openCourseModal = () => {
+    editingCourseId = null;
+    document.getElementById('courseModalTitle').textContent = 'New Course';
+    document.getElementById('saveCourseText').textContent = 'Save Course';
+    ['courseTitle','courseDesc','courseCategory','courseIcon','courseThumbnail'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('courseRequiredPlan').value = 'free';
+    document.getElementById('courseOrder').value = '0';
+    document.getElementById('courseModal').classList.add('open');
+  };
+
+  window.editCourse = async (id) => {
+    const course = await CourseService.get(id);
+    editingCourseId = id;
+    document.getElementById('courseModalTitle').textContent = 'Edit Course';
+    document.getElementById('saveCourseText').textContent = 'Update Course';
+    document.getElementById('courseTitle').value = course.title || '';
+    document.getElementById('courseDesc').value = course.description || '';
+    document.getElementById('courseCategory').value = course.category || '';
+    document.getElementById('courseIcon').value = course.icon || '';
+    document.getElementById('courseRequiredPlan').value = course.requiredPlan || 'free';
+    document.getElementById('courseOrder').value = course.order || 0;
+    document.getElementById('courseThumbnail').value = course.thumbnailUrl || '';
+    document.getElementById('courseModal').classList.add('open');
+  };
+
+  window.closeCourseModal = () => document.getElementById('courseModal').classList.remove('open');
+
+  window.saveCourse = async () => {
+    const data = {
+      title: document.getElementById('courseTitle').value.trim(),
+      description: document.getElementById('courseDesc').value.trim(),
+      category: document.getElementById('courseCategory').value.trim(),
+      icon: document.getElementById('courseIcon').value.trim(),
+      requiredPlan: document.getElementById('courseRequiredPlan').value,
+      order: parseInt(document.getElementById('courseOrder').value) || 0,
+      thumbnailUrl: document.getElementById('courseThumbnail').value.trim()
+    };
+    if (!data.title) { showToast('Title is required', 'error'); return; }
+
+    document.getElementById('saveCourseBtn').disabled = true;
+    document.getElementById('saveCourseText').textContent = 'Saving...';
+    try {
+      if (editingCourseId) await CourseService.update(editingCourseId, data);
+      else await CourseService.create(data);
+      showToast('Course saved!', 'success');
+      closeCourseModal();
+      loadCourses();
+    } catch(e) {
+      showToast('Error: ' + e.message, 'error');
+    }
+    document.getElementById('saveCourseBtn').disabled = false;
+    document.getElementById('saveCourseText').textContent = editingCourseId ? 'Update Course' : 'Save Course';
+  };
+
+  window.deleteCourse = async (id, title) => {
+    if (!confirm(`Delete course "${title}"? This cannot be undone.`)) return;
+    await CourseService.delete(id);
+    showToast('Course deleted', 'success');
+    loadCourses();
+  };
+
+  window.toggleSidebar = () => document.getElementById('sidebar').classList.toggle('mobile-open');
+  window.handleLogout = () => AuthService.logout();
+  window.showToast = (msg, type='info') => {
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    t.textContent = msg;
+    document.getElementById('toast-container').appendChild(t);
+    setTimeout(() => t.remove(), 4000);
+  };
+  init();
+</script>
+</body>
+</html>

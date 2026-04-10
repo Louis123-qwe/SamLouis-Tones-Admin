@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Content Blocks — Admin</title>
+  <link rel="stylesheet" href="../css/main.css" />
+  <link rel="stylesheet" href="admin.css" />
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-functions-compat.js"></script>
+</head>
+<body>
+<div class="page-loader" id="pageLoader">
+  <div style="text-align:center"><div style="font-size:2.5rem;margin-bottom:12px">⚙️</div><div class="spinner" style="width:28px;height:28px;margin:0 auto"></div></div>
+</div>
+
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar" style="background:#0D1117">
+    <div class="sidebar-logo">
+      <div class="logo-mark">
+        <div class="logo-icon" style="background:linear-gradient(135deg,var(--orange),#c0392b)">⚙️</div>
+        <div class="logo-text">Admin <span style="color:var(--orange)">Panel</span></div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <a href="index.html" class="nav-item"><span class="nav-icon">📊</span> Dashboard</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Content</div>
+        <a href="courses.html" class="nav-item"><span class="nav-icon">📚</span> Courses</a>
+        <a href="lessons.html" class="nav-item"><span class="nav-icon">📖</span> Lessons</a>
+        <a href="content.html" class="nav-item active"><span class="nav-icon">📝</span> Content Blocks</a>
+        <a href="marketplace.html" class="nav-item"><span class="nav-icon">🎼</span> Marketplace</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Users & Billing</div>
+        <a href="users.html" class="nav-item"><span class="nav-icon">👥</span> Users</a>
+        <a href="codes.html" class="nav-item"><span class="nav-icon">🎟️</span> Payment Codes</a>
+        <a href="notifications.html" class="nav-item"><span class="nav-icon">🔔</span> Notifications</a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <a href="../pages/dashboard.html" class="nav-item" style="color:rgba(255,255,255,0.5)"><span class="nav-icon">👁</span> View Site</a>
+      <button class="nav-item" onclick="handleLogout()" style="width:100%;margin-top:4px"><span class="nav-icon">🚪</span> Sign Out</button>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <header class="topbar" style="background:#161B22;border-color:#30363D">
+      <div class="topbar-left">
+        <button class="hamburger btn btn-ghost btn-icon" onclick="toggleSidebar()">☰</button>
+        <div>
+          <div style="font-size:0.75rem;color:#8B949E">Content Builder</div>
+          <div style="font-weight:700;color:white" id="headerLessonName">Select a lesson</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-primary" onclick="openAddBlock()">+ Add Block</button>
+      </div>
+    </header>
+
+    <div class="page-content">
+      <!-- Lesson selector -->
+      <div class="card mb-20" style="border-radius:var(--r-xl);padding:16px 20px">
+        <div class="flex items-center gap-16 flex-wrap">
+          <div style="font-weight:600">Select Lesson:</div>
+          <select id="courseSelect" class="form-input" style="width:auto;min-width:200px" onchange="onCourseChange()">
+            <option value="">Choose course...</option>
+          </select>
+          <select id="lessonSelect" class="form-input" style="width:auto;min-width:240px" onchange="onLessonChange()">
+            <option value="">Choose lesson...</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Block list -->
+      <div id="blockList">
+        <div class="empty-state">
+          <div class="empty-icon">📝</div>
+          <div class="empty-title">No lesson selected</div>
+          <div class="empty-sub">Select a course and lesson above to manage its content blocks.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit Block Modal -->
+<div class="modal-overlay" id="blockModal">
+  <div class="modal" style="max-width:620px">
+    <div class="modal-header">
+      <span class="modal-title" id="blockModalTitle">Add Content Block</span>
+      <button class="modal-close" onclick="closeBlockModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- Step 1: Type selector (hidden after selection) -->
+      <div id="typeSelector">
+        <div style="font-weight:600;margin-bottom:12px">Choose Block Type:</div>
+        <div class="add-block-grid">
+          <button class="add-block-btn" onclick="selectType('text')"><span class="add-block-icon">📄</span>Text / Paragraph</button>
+          <button class="add-block-btn" onclick="selectType('heading')"><span class="add-block-icon">🔤</span>Heading</button>
+          <button class="add-block-btn" onclick="selectType('image')"><span class="add-block-icon">🖼️</span>Image</button>
+          <button class="add-block-btn" onclick="selectType('table')"><span class="add-block-icon">📊</span>Table</button>
+          <button class="add-block-btn" onclick="selectType('container')"><span class="add-block-icon">📦</span>Container</button>
+          <button class="add-block-btn" onclick="selectType('note')"><span class="add-block-icon">📌</span>Note / Callout</button>
+        </div>
+      </div>
+
+      <!-- Block form (shown after type selection) -->
+      <div id="blockForm" style="display:none">
+        <div id="blockTypeIndicator" style="display:flex;align-items:center;gap:8px;margin-bottom:16px;padding:8px 12px;background:var(--milk);border-radius:var(--r-md)">
+          <span id="blockTypeIcon" style="font-size:1.25rem"></span>
+          <span id="blockTypeName" style="font-weight:700"></span>
+          <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="resetTypeSelector()">Change type</button>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <!-- Text block -->
+          <div id="field-text" style="display:none">
+            <div class="form-group">
+              <label class="form-label">Text Content</label>
+              <textarea id="blockText" class="form-input" rows="5" placeholder="Enter paragraph text..."></textarea>
+            </div>
+          </div>
+
+          <!-- Heading block -->
+          <div id="field-heading" style="display:none">
+            <div class="form-group">
+              <label class="form-label">Heading Text</label>
+              <input type="text" id="blockHeading" class="form-input" placeholder="Enter heading..." />
+            </div>
+          </div>
+
+          <!-- Image block -->
+          <div id="field-image" style="display:none">
+            <div class="form-group">
+              <label class="form-label">Cloudinary Image URL</label>
+              <input type="url" id="blockImageUrl" class="form-input" placeholder="https://res.cloudinary.com/..." />
+            </div>
+            <div class="form-group mt-12">
+              <label class="form-label">Caption (optional)</label>
+              <input type="text" id="blockCaption" class="form-input" placeholder="Image caption..." />
+            </div>
+            <div id="imagePreview" style="margin-top:12px;display:none">
+              <img id="imagePreviewImg" src="" alt="preview" style="max-height:160px;border-radius:var(--r-md);object-fit:cover" />
+            </div>
+          </div>
+
+          <!-- Table block -->
+          <div id="field-table" style="display:none">
+            <div class="flex items-center justify-between mb-10">
+              <div style="font-weight:600">Table Editor</div>
+              <div style="display:flex;gap:8px">
+                <button class="btn btn-ghost btn-sm" onclick="addTableRow()">+ Row</button>
+                <button class="btn btn-ghost btn-sm" onclick="addTableCol()">+ Column</button>
+              </div>
+            </div>
+            <div style="overflow-x:auto">
+              <table class="table-editor" id="tableEditor" style="width:100%;border-collapse:collapse"></table>
+            </div>
+          </div>
+
+          <!-- Container block -->
+          <div id="field-container" style="display:none">
+            <div class="form-group">
+              <label class="form-label">Container Title</label>
+              <input type="text" id="blockContainerTitle" class="form-input" placeholder="Section title..." />
+            </div>
+            <div class="form-group mt-12">
+              <label class="form-label">Container Content</label>
+              <textarea id="blockContainerContent" class="form-input" rows="4" placeholder="Content inside this container..."></textarea>
+            </div>
+          </div>
+
+          <!-- Note block -->
+          <div id="field-note" style="display:none">
+            <div class="form-group">
+              <label class="form-label">Note Content</label>
+              <textarea id="blockNote" class="form-input" rows="4" placeholder="Enter note/callout text..."></textarea>
+            </div>
+          </div>
+
+          <!-- Shared fields -->
+          <div class="grid grid-2 gap-14">
+            <div class="form-group">
+              <label class="form-label">Position / Order</label>
+              <input type="number" id="blockPosition" class="form-input" value="0" min="0" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Access Lock</label>
+              <select id="blockLock" class="form-input">
+                <option value="free">🟢 Free — Everyone</option>
+                <option value="course">🔵 Course Plan+</option>
+                <option value="premium">👑 Premium Only</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeBlockModal()">Cancel</button>
+      <button class="btn btn-primary" id="saveBlockBtn" onclick="saveBlock()" style="display:none">
+        <span id="saveBlockText">Save Block</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<div class="modal-overlay" id="mobileOverlay" onclick="toggleSidebar()"></div>
+
+<script type="module">
+  import { AuthService } from './auth.js';
+  import { CourseService, LessonService, ContentBlockService } from './db.js';
+
+  let courses = [], lessonsMap = {}, currentLessonId = null, editingBlockId = null;
+  let selectedType = null;
+  let tableData = { headers: ['Header 1', 'Header 2'], rows: [['', '']] };
+
+  const TYPE_META = {
+    text:      { icon: '📄', name: 'Text / Paragraph' },
+    heading:   { icon: '🔤', name: 'Heading' },
+    image:     { icon: '🖼️', name: 'Image' },
+    table:     { icon: '📊', name: 'Table' },
+    container: { icon: '📦', name: 'Container' },
+    note:      { icon: '📌', name: 'Note / Callout' }
+  };
+
+  async function init() {
+    await AuthService.requireAdmin();
+    courses = await CourseService.getAll();
+    document.getElementById('pageLoader').classList.add('hidden');
+
+    const sel = document.getElementById('courseSelect');
+    sel.innerHTML = `<option value="">Choose course...</option>` +
+      courses.map(c => `<option value="${c.id}">${c.title}</option>`).join('');
+
+    // Pre-select from URL
+    const params = new URLSearchParams(window.location.search);
+    const lessonId = params.get('lessonId');
+    if (lessonId) {
+      const lesson = await LessonService.get(lessonId);
+      if (lesson) {
+        sel.value = lesson.courseId;
+        await onCourseChange();
+        document.getElementById('lessonSelect').value = lessonId;
+        onLessonChange();
+      }
+    }
+  }
+
+  window.onCourseChange = async () => {
+    const courseId = document.getElementById('courseSelect').value;
+    const lessonSel = document.getElementById('lessonSelect');
+    lessonSel.innerHTML = `<option value="">Choose lesson...</option>`;
+    currentLessonId = null;
+    document.getElementById('blockList').innerHTML = `<div class="empty-state"><div class="empty-icon">📖</div><div class="empty-sub">Select a lesson to manage its blocks.</div></div>`;
+    if (!courseId) return;
+    const lessons = await LessonService.getByCourse(courseId);
+    lessons.forEach(l => {
+      lessonsMap[l.id] = l;
+      lessonSel.innerHTML += `<option value="${l.id}">${l.title}</option>`;
+    });
+  };
+
+  window.onLessonChange = async () => {
+    currentLessonId = document.getElementById('lessonSelect').value;
+    if (!currentLessonId) return;
+    const lesson = lessonsMap[currentLessonId];
+    document.getElementById('headerLessonName').textContent = lesson?.title || currentLessonId;
+    loadBlocks();
+  };
+
+  async function loadBlocks() {
+    if (!currentLessonId) return;
+    const blocks = await ContentBlockService.getByLesson(currentLessonId);
+    const container = document.getElementById('blockList');
+
+    if (!blocks.length) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">📝</div>
+          <div class="empty-title">No content blocks</div>
+          <div class="empty-sub">Click "+ Add Block" to build this lesson's content.</div>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = blocks.map(b => `
+      <div class="block-item" id="block-${b.id}">
+        <div class="block-drag-handle">⠿</div>
+        <div class="block-type-icon">${TYPE_META[b.type]?.icon || '📄'}</div>
+        <div class="block-info">
+          <div class="block-name">${TYPE_META[b.type]?.name || b.type}</div>
+          <div class="block-preview">${blockPreview(b)}</div>
+        </div>
+        <span class="badge badge-${b.lock === 'premium' ? 'premium' : b.lock === 'course' ? 'course' : 'green'}" style="flex-shrink:0">
+          ${b.lock === 'premium' ? '👑' : b.lock === 'course' ? '🔵' : '🟢'} ${b.lock || 'free'}
+        </span>
+        <div class="block-actions">
+          <button class="btn btn-ghost btn-sm" onclick="editBlock('${b.id}')">✏️</button>
+          <button class="btn btn-sm" style="color:var(--error)" onclick="deleteBlock('${b.id}')">🗑️</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function blockPreview(b) {
+    if (b.type === 'image') return b.url ? `<img src="${b.url}" style="height:20px;width:30px;object-fit:cover;border-radius:3px;display:inline-block;vertical-align:middle"> ${b.caption || b.url.slice(-30)}` : 'No URL';
+    if (b.type === 'table') return `Table: ${b.tableData?.headers?.join(', ') || ''}`;
+    if (b.type === 'container') return b.title || b.content || '';
+    return (b.content || '').slice(0, 80);
+  }
+
+  // ─── TYPE SELECTOR ───────────────────────────────────────────
+
+  window.selectType = (type) => {
+    selectedType = type;
+    document.getElementById('typeSelector').style.display = 'none';
+    document.getElementById('blockForm').style.display = 'block';
+    document.getElementById('saveBlockBtn').style.display = 'inline-flex';
+
+    const meta = TYPE_META[type];
+    document.getElementById('blockTypeIcon').textContent = meta.icon;
+    document.getElementById('blockTypeName').textContent = meta.name;
+
+    // Hide all fields, show relevant
+    ['text','heading','image','table','container','note'].forEach(t =>
+      document.getElementById(`field-${t}`).style.display = 'none'
+    );
+    document.getElementById(`field-${type}`).style.display = 'block';
+
+    if (type === 'table') renderTableEditor();
+  };
+
+  window.resetTypeSelector = () => {
+    selectedType = null;
+    document.getElementById('typeSelector').style.display = 'block';
+    document.getElementById('blockForm').style.display = 'none';
+    document.getElementById('saveBlockBtn').style.display = 'none';
+  };
+
+  // ─── TABLE EDITOR ────────────────────────────────────────────
+
+  function renderTableEditor() {
+    const tbl = document.getElementById('tableEditor');
+    tbl.innerHTML = `
+      <thead><tr>
+        ${tableData.headers.map((h,i) => `<th><input value="${h}" oninput="tableData.headers[${i}]=this.value" /></th>`).join('')}
+        <th><button class="btn btn-ghost btn-sm" style="color:var(--error)" onclick="removeTableCol()">✕ Col</button></th>
+      </tr></thead>
+      <tbody>
+        ${tableData.rows.map((row, ri) => `
+          <tr>
+            ${row.map((cell, ci) => `<td><input value="${cell}" oninput="tableData.rows[${ri}][${ci}]=this.value" /></td>`).join('')}
+            <td><button class="btn btn-ghost btn-sm" style="color:var(--error)" onclick="removeTableRow(${ri})">✕</button></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    `;
+  }
+
+  window.addTableRow = () => {
+    tableData.rows.push(new Array(tableData.headers.length).fill(''));
+    renderTableEditor();
+  };
+  window.addTableCol = () => {
+    tableData.headers.push(`Header ${tableData.headers.length + 1}`);
+    tableData.rows.forEach(r => r.push(''));
+    renderTableEditor();
+  };
+  window.removeTableRow = (i) => { tableData.rows.splice(i, 1); renderTableEditor(); };
+  window.removeTableCol = () => {
+    if (tableData.headers.length <= 1) return;
+    tableData.headers.pop();
+    tableData.rows.forEach(r => r.pop());
+    renderTableEditor();
+  };
+
+  // Image preview
+  document.addEventListener('input', e => {
+    if (e.target.id === 'blockImageUrl') {
+      const url = e.target.value.trim();
+      const preview = document.getElementById('imagePreview');
+      const img = document.getElementById('imagePreviewImg');
+      if (url) { img.src = url; preview.style.display = 'block'; }
+      else { preview.style.display = 'none'; }
+    }
+  });
+
+  // ─── OPEN / EDIT ─────────────────────────────────────────────
+
+  window.openAddBlock = () => {
+    if (!currentLessonId) { showToast('Please select a lesson first', 'warning'); return; }
+    editingBlockId = null;
+    selectedType = null;
+    tableData = { headers: ['Header 1', 'Header 2'], rows: [['', '']] };
+    document.getElementById('blockModalTitle').textContent = 'Add Content Block';
+    document.getElementById('saveBlockText').textContent = 'Save Block';
+    document.getElementById('typeSelector').style.display = 'block';
+    document.getElementById('blockForm').style.display = 'none';
+    document.getElementById('saveBlockBtn').style.display = 'none';
+    document.getElementById('blockPosition').value = '0';
+    document.getElementById('blockLock').value = 'free';
+    // Clear fields
+    ['blockText','blockHeading','blockImageUrl','blockCaption','blockContainerTitle','blockContainerContent','blockNote']
+      .forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+    document.getElementById('imagePreview').style.display = 'none';
+    document.getElementById('blockModal').classList.add('open');
+  };
+
+  window.editBlock = async (id) => {
+    const blocks = await ContentBlockService.getByLesson(currentLessonId);
+    const block = blocks.find(b => b.id === id);
+    if (!block) return;
+    editingBlockId = id;
+    selectedType = block.type;
+    document.getElementById('blockModalTitle').textContent = 'Edit Content Block';
+    document.getElementById('saveBlockText').textContent = 'Update Block';
+    document.getElementById('typeSelector').style.display = 'none';
+    document.getElementById('blockForm').style.display = 'block';
+    document.getElementById('saveBlockBtn').style.display = 'inline-flex';
+
+    const meta = TYPE_META[block.type];
+    document.getElementById('blockTypeIcon').textContent = meta?.icon || '📄';
+    document.getElementById('blockTypeName').textContent = meta?.name || block.type;
+
+    ['text','heading','image','table','container','note'].forEach(t =>
+      document.getElementById(`field-${t}`).style.display = 'none'
+    );
+    document.getElementById(`field-${block.type}`).style.display = 'block';
+    document.getElementById('blockPosition').value = block.position || 0;
+    document.getElementById('blockLock').value = block.lock || 'free';
+
+    if (block.type === 'text') document.getElementById('blockText').value = block.content || '';
+    if (block.type === 'heading') document.getElementById('blockHeading').value = block.content || '';
+    if (block.type === 'image') {
+      document.getElementById('blockImageUrl').value = block.url || '';
+      document.getElementById('blockCaption').value = block.caption || '';
+      if (block.url) { document.getElementById('imagePreviewImg').src = block.url; document.getElementById('imagePreview').style.display = 'block'; }
+    }
+    if (block.type === 'table') {
+      tableData = block.tableData || { headers: ['H1','H2'], rows: [['','']] };
+      renderTableEditor();
+    }
+    if (block.type === 'container') {
+      document.getElementById('blockContainerTitle').value = block.title || '';
+      document.getElementById('blockContainerContent').value = block.content || '';
+    }
+    if (block.type === 'note') document.getElementById('blockNote').value = block.content || '';
+
+    document.getElementById('blockModal').classList.add('open');
+  };
+
+  window.closeBlockModal = () => document.getElementById('blockModal').classList.remove('open');
+
+  // ─── SAVE ────────────────────────────────────────────────────
+
+  window.saveBlock = async () => {
+    if (!selectedType) { showToast('Choose a block type', 'warning'); return; }
+
+    let data = {
+      type: selectedType,
+      position: parseInt(document.getElementById('blockPosition').value) || 0,
+      lock: document.getElementById('blockLock').value
+    };
+
+    if (selectedType === 'text') data.content = document.getElementById('blockText').value.trim();
+    if (selectedType === 'heading') data.content = document.getElementById('blockHeading').value.trim();
+    if (selectedType === 'image') {
+      data.url = document.getElementById('blockImageUrl').value.trim();
+      data.caption = document.getElementById('blockCaption').value.trim();
+      if (!data.url) { showToast('Image URL is required', 'error'); return; }
+    }
+    if (selectedType === 'table') data.tableData = tableData;
+    if (selectedType === 'container') {
+      data.title = document.getElementById('blockContainerTitle').value.trim();
+      data.content = document.getElementById('blockContainerContent').value.trim();
+    }
+    if (selectedType === 'note') data.content = document.getElementById('blockNote').value.trim();
+
+    document.getElementById('saveBlockBtn').disabled = true;
+    document.getElementById('saveBlockText').textContent = 'Saving...';
+
+    try {
+      if (editingBlockId) {
+        await ContentBlockService.update(editingBlockId, data);
+      } else {
+        await ContentBlockService.create(currentLessonId, data);
+      }
+      showToast('Block saved!', 'success');
+      closeBlockModal();
+      loadBlocks();
+    } catch(e) {
+      showToast('Error: ' + e.message, 'error');
+    }
+    document.getElementById('saveBlockBtn').disabled = false;
+    document.getElementById('saveBlockText').textContent = editingBlockId ? 'Update Block' : 'Save Block';
+  };
+
+  window.deleteBlock = async (id) => {
+    if (!confirm('Delete this content block?')) return;
+    await ContentBlockService.delete(id);
+    showToast('Block deleted', 'success');
+    loadBlocks();
+  };
+
+  window.toggleSidebar = () => document.getElementById('sidebar').classList.toggle('mobile-open');
+  window.handleLogout = () => AuthService.logout();
+  window.showToast = (msg, type = 'info') => {
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    t.textContent = msg;
+    document.getElementById('toast-container').appendChild(t);
+    setTimeout(() => t.remove(), 4000);
+  };
+
+  init();
+</script>
+</body>
+</html>
