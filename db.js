@@ -238,31 +238,61 @@ export const ContentBlockService = {
 // ─── PAYMENT CODES ──────────────────────────────────────────
 
 export const PaymentCodeService = {
-  async create(data) {
-    return db.collection('paymentCodes').add({
-      code: data.code,
-      plan: data.plan,         // course | premium
-      assignedUserId: data.assignedUserId || null,
-      status: 'unused',        // unused | used
-      createdAt: FS.FieldValue.serverTimestamp(),
-      expiresAt: data.expiresAt || null,
-      createdBy: data.createdBy
-    });
+  /**
+   * Adds a new code document to Firestore.
+   * This is used when generating codes directly in the admin panel.
+   */
+  async add(data) {
+    try {
+      return await db.collection('paymentCodes').add({
+        ...data,
+        status: data.status || 'unused',
+        createdAt: FS.FieldValue.serverTimestamp()
+      });
+    } catch (error) {
+      console.error("Error adding payment code:", error);
+      throw error;
+    }
   },
+
+  /**
+   * Fetches all codes for the admin table.
+   */
   async getAll() {
-    const snap = await db.collection('paymentCodes').orderBy('createdAt', 'desc').get();
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    try {
+      const snap = await db.collection('paymentCodes').orderBy('createdAt', 'desc').get();
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch (error) {
+      console.error("Error fetching codes:", error);
+      return [];
+    }
   },
+
+  /**
+   * Admin: Deletes a specific code.
+   */
+  async delete(id) {
+    if (!id) return;
+    try {
+      return await db.collection('paymentCodes').doc(id).delete();
+    } catch (error) {
+      console.error("Error deleting code:", error);
+      throw error;
+    }
+  },
+
   async getByCode(code) {
     const snap = await db.collection('paymentCodes').where('code', '==', code).limit(1).get();
     return snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() };
   },
-  // Validate + redeem via Cloud Function (secure)
+
+  // Keep this for when you fix the Cloud Function for users to redeem codes
   async redeem(code, userId) {
     const fn = functions.httpsCallable('redeemPaymentCode');
     return fn({ code, userId });
   }
 };
+
 
 // ─── NOTIFICATIONS ──────────────────────────────────────────
 
