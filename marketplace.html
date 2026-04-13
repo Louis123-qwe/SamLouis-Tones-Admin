@@ -114,11 +114,13 @@
         <div class="grid grid-2 gap-16">
   <div class="form-group">
     <label class="form-label">Collection (Group)</label>
-    <input type="text" id="itemCollection" class="form-input" placeholder="e.g. Classical Era" />
+    <input type="text" id="itemCollection" class="form-input" list="collectionOptions" placeholder="e.g. Classical Era" />
+    <datalist id="collectionOptions"></datalist>
   </div>
   <div class="form-group">
     <label class="form-label">Sub-Collection</label>
-    <input type="text" id="itemSubCollection" class="form-input" placeholder="e.g. Piano Sonatas" />
+    <input type="text" id="itemSubCollection" class="form-input" list="subCollectionOptions" placeholder="e.g. Piano Sonatas" />
+    <datalist id="subCollectionOptions"></datalist>
   </div>
 </div>
 
@@ -214,58 +216,104 @@
 
 <script type="module">
   import { AuthService } from './auth.js';
-  import { MarketplaceService, UserService } from './db.js';
-  import { functions } from './config.js';
+  import { MarketplaceService, UserService, NotificationService } from './db.js';
+  import { db } from './config.js';
 
   let allItems = [], allUsers = [], editingItemId = null;
 
+  /**
+   * INITIALIZE PAGE
+   */
   async function init() {
-    await AuthService.requireAdmin();
-    document.getElementById('pageLoader').classList.add('hidden');
-    [allItems, allUsers] = await Promise.all([MarketplaceService.getAll(), UserService.getAll()]);
+    try {
+      await AuthService.requireAdmin();
+      
+      // Load data in parallel
+      [allItems, allUsers] = await Promise.all([
+        MarketplaceService.getAll(), 
+        UserService.getAll()
+      ]);
 
-    const userSel = document.getElementById('unlockUserId');
-    allUsers.forEach(u => userSel.innerHTML += `<option value="${u.id}">${u.displayName || u.email}</option>`);
+      // Populate User Dropdown for Unlocking
+      const userSel = document.getElementById('unlockUserId');
+      userSel.innerHTML = '<option value="">Choose user...</option>';
+      allUsers.forEach(u => {
+        userSel.innerHTML += `<option value="${u.id}">${u.displayName || u.email}</option>`;
+      });
 
-    renderItems();
+      document.getElementById('pageLoader').classList.add('hidden');
+      renderItems();
+      updateDatalists();
+    } catch (e) {
+      console.error("Init Error:", e);
+      showToast("Failed to initialize admin data", "error");
+    }
   }
 
+  /**
+   * SYNC DATALISTS (The "Auto-Suggest" Logic)
+   */
+  function updateDatalists() {
+    const collections = new Set();
+    const subCollections = new Set();
+
+    allItems.forEach(item => {
+      if (item.collection) collections.add(item.collection);
+      if (item.subCollection) subCollections.add(item.subCollection);
+    });
+
+    const colList = document.getElementById('collectionOptions');
+    const subList = document.getElementById('subCollectionOptions');
+
+    if (colList) colList.innerHTML = Array.from(collections).sort().map(c => `<option value="${c}">`).join('');
+    if (subList) subList.innerHTML = Array.from(subCollections).sort().map(s => `<option value="${s}">`).join('');
+  }
+
+  /**
+   * RENDER TABLE
+   */
   function renderItems() {
     const container = document.getElementById('itemsTable');
     if (!allItems.length) {
-      container.innerHTML = `<div class="empty-state" style="padding:60px"><div class="empty-icon">🎼</div><div class="empty-title">No marketplace items</div><div class="empty-sub">Add your first item to the marketplace.</div></div>`;
+      container.innerHTML = `
+        <div class="empty-state" style="padding:60px">
+          <div class="empty-icon">🎼</div>
+          <div class="empty-title">No marketplace items</div>
+          <div class="empty-sub">Add your first item to get started.</div>
+        </div>`;
       return;
     }
 
+    // Update Unlock Modal's Item List
     const itemSel = document.getElementById('unlockItemId');
     itemSel.innerHTML = `<option value="">Choose item...</option>` +
       allItems.map(i => `<option value="${i.id}">${i.title}</option>`).join('');
 
     container.innerHTML = `
       <table class="data-table">
-        <thead><tr>
-          <th>Item</th><th>Category</th><th>Price</th><th>Access</th><th>File</th><th>Actions</th>
-        </tr></thead>
+        <thead>
+          <tr>
+            <th>Item</th><th>Category</th><th>Price</th><th>Access</th><th>File</th><th>Actions</th>
+          </tr>
+        </thead>
         <tbody>
         ${allItems.map(item => `
           <tr>
             <td>
-              <div style="display:flex;align-items:center;gap:10px">
-                <div style="font-size:1.5rem">${item.icon || '🎵'}</div>
+              <div style="display:flex;align-items:center;gap:12px">
+                <div style="width:40px;height:40px;background:var(--border-light);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden">
+                  ${item.thumbnailUrl ? `<img src="${item.thumbnailUrl}" style="width:100%;height:100%;object-fit:cover">` : `<span style="font-size:1.25rem">${item.icon || '🎵'}</span>`}
+                </div>
                 <div>
                   <div style="font-weight:600;font-size:0.875rem">${item.title}</div>
-                  <div style="font-size:0.75rem;color:var(--text-muted)">${item.description?.slice(0,50) || ''}</div>
-                  ${item.collection ? `<div style="font-size:0.7rem; color:var(--azure); margin-top:4px">📁 ${item.collection}</div>` : ''}
+                  ${item.collection ? `<div style="font-size:0.7rem; color:var(--azure)">📁 ${item.collection}${item.subCollection ? ' / ' + item.subCollection : ''}</div>` : ''}
                 </div>
               </div>
             </td>
             <td><span class="badge badge-gray">${item.category || 'other'}</span></td>
-            <td style="font-weight:700;color:var(--azure)">${item.price === 0 || !item.price ? 'Free' : '₦' + Number(item.price).toLocaleString()}</td>
+            <td style="font-weight:700;color:var(--azure)">${!item.price ? 'Free' : '₦' + Number(item.price).toLocaleString()}</td>
             <td><span class="badge badge-${item.access === 'free' ? 'green' : 'orange'}">${item.access === 'free' ? '🟢 Free' : '🔒 Paid'}</span></td>
-            <td>${item.fileUrl
-              ? `<a href="${item.fileUrl}" target="_blank" class="btn btn-ghost btn-sm">↗ View</a>`
-              : '<span style="color:var(--text-muted);font-size:0.8125rem">No file</span>'
-            }</td>
+            <td>${item.fileUrl ? `<a href="${item.fileUrl}" target="_blank" class="btn btn-ghost btn-sm">↗ View</a>` : '—'}</td>
             <td>
               <div style="display:flex;gap:6px">
                 <button class="btn btn-ghost btn-sm" onclick="editItem('${item.id}')">✏️ Edit</button>
@@ -279,52 +327,9 @@
     `;
   }
 
-  window.openItemModal = () => {
-    editingItemId = null;
-    document.getElementById('itemModalTitle').textContent = 'Add Marketplace Item';
-    document.getElementById('saveItemText').textContent = 'Save Item';
-    
-    // Clear all fields
-    ['itemTitle','itemDesc','itemPrice','itemIcon','itemFileUrl','itemThumb','itemCollection','itemSubCollection'].forEach(id => {
-       const el = document.getElementById(id);
-       if (el) el.value = ''; 
-    });
-
-    document.getElementById('imagePreview').innerHTML = '<span>🖼️</span>';
-    document.getElementById('uploadStatus').textContent = 'Upload thumbnail';
-    document.getElementById('fileStatus').textContent = 'Upload score/script (PDF)';
-    document.getElementById('itemCategory').value = 'score';
-    document.getElementById('itemAccess').value = 'paid';
-    document.getElementById('itemModal').classList.add('open');
-  };
-
-  window.editItem = (id) => {
-    const item = allItems.find(i => i.id === id);
-    if (!item) return;
-    editingItemId = id;
-    document.getElementById('itemModalTitle').textContent = 'Edit Item';
-    document.getElementById('saveItemText').textContent = 'Update Item';
-    
-    document.getElementById('itemTitle').value = item.title || '';
-    document.getElementById('itemDesc').value = item.description || '';
-    document.getElementById('itemPrice').value = item.price || '';
-    document.getElementById('itemIcon').value = item.icon || '';
-    document.getElementById('itemCategory').value = item.category || 'score';
-    document.getElementById('itemCollection').value = item.collection || '';
-    document.getElementById('itemSubCollection').value = item.subCollection || '';
-    document.getElementById('itemThumb').value = item.thumbnailUrl || '';
-    document.getElementById('itemFileUrl').value = item.fileUrl || '';
-    document.getElementById('itemAccess').value = item.access || 'paid';
-
-    if (item.thumbnailUrl) {
-      document.getElementById('imagePreview').innerHTML = `<img src="${item.thumbnailUrl}" style="width:100%; height:100%; object-fit:cover;" />`;
-    }
-    
-    document.getElementById('itemModal').classList.add('open');
-  };
-
-  window.closeItemModal = () => document.getElementById('itemModal').classList.remove('open');
-
+  /**
+   * SAVE ITEM (Create or Update)
+   */
   window.saveItem = async () => {
     const title = document.getElementById('itemTitle').value.trim();
     if (!title) { showToast('Title is required', 'error'); return; }
@@ -339,78 +344,125 @@
       subCollection: document.getElementById('itemSubCollection').value.trim(),
       fileUrl: document.getElementById('itemFileUrl').value.trim(),
       thumbnailUrl: document.getElementById('itemThumb').value.trim(),
-      access: document.getElementById('itemAccess').value
+      access: document.getElementById('itemAccess').value,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
 
-    document.getElementById('saveItemBtn').disabled = true;
-    document.getElementById('saveItemText').textContent = 'Saving...';
+    const btn = document.getElementById('saveItemBtn');
+    const txt = document.getElementById('saveItemText');
+    btn.disabled = true;
+    txt.textContent = 'Saving...';
+
     try {
       if (editingItemId) {
         await MarketplaceService.update(editingItemId, data);
         const idx = allItems.findIndex(i => i.id === editingItemId);
         if (idx >= 0) allItems[idx] = { id: editingItemId, ...data };
       } else {
+        data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
         const ref = await MarketplaceService.create(data);
         allItems.unshift({ id: ref.id, ...data });
       }
-      showToast('Item saved!', 'success');
+      
+      showToast('Item saved successfully!', 'success');
       closeItemModal();
       renderItems();
+      updateDatalists();
     } catch(e) {
       showToast('Error: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      txt.textContent = 'Save Item';
     }
-    document.getElementById('saveItemBtn').disabled = false;
   };
 
+  /**
+   * CLOUDINARY UPLOADER
+   */
   window.handleFileUpload = async (input, hiddenInputId, statusId) => {
     const file = input.files[0];
     if (!file) return;
-    const CLOUDINARY_URL = "https://api.cloudinary.com/v1_1/dhetav9az/auto/upload";
-    const UPLOAD_PRESET = "SamLouis";
+
     const status = document.getElementById(statusId);
-    status.textContent = "Uploading...";
+    status.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Uploading...';
+    
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('upload_preset', UPLOAD_PRESET);
+    formData.append('upload_preset', "SamLouis");
 
     try {
-      const response = await fetch(CLOUDINARY_URL, { method: 'POST', body: formData });
-      const data = await response.json();
+      const res = await fetch("https://api.cloudinary.com/v1_1/dhetav9az/auto/upload", { 
+        method: 'POST', body: formData 
+      });
+      const data = await res.json();
+      
       if (data.secure_url) {
         document.getElementById(hiddenInputId).value = data.secure_url;
         status.textContent = "✅ Uploaded";
         if (hiddenInputId === 'itemThumb') {
-          document.getElementById('imagePreview').innerHTML = `<img src="${data.secure_url}" style="width:100%; height:100%; object-fit:cover;" />`;
+          document.getElementById('imagePreview').innerHTML = `<img src="${data.secure_url}" style="width:100%;height:100%;object-fit:cover">`;
         }
+      } else {
+        throw new Error(data.error?.message || "Upload failed");
       }
     } catch (e) {
-      status.textContent = "❌ Error";
+      status.textContent = "❌ Error: " + e.message;
     }
   };
 
-  // Remaining window functions (deleteItem, grantAccess, etc.)
+  /**
+   * UI CONTROLS
+   */
+  window.openItemModal = () => {
+    editingItemId = null;
+    document.getElementById('itemModalTitle').textContent = 'Add Marketplace Item';
+    ['itemTitle','itemDesc','itemPrice','itemIcon','itemFileUrl','itemThumb','itemCollection','itemSubCollection'].forEach(id => {
+       const el = document.getElementById(id);
+       if (el) el.value = ''; 
+    });
+    document.getElementById('imagePreview').innerHTML = '<span>🖼️</span>';
+    document.getElementById('uploadStatus').textContent = 'Upload thumbnail';
+    document.getElementById('fileStatus').textContent = 'Upload score/script';
+    document.getElementById('itemModal').classList.add('open');
+  };
+
+  window.editItem = (id) => {
+    const item = allItems.find(i => i.id === id);
+    if (!item) return;
+    editingItemId = id;
+    document.getElementById('itemModalTitle').textContent = 'Edit Item';
+    
+    document.getElementById('itemTitle').value = item.title || '';
+    document.getElementById('itemDesc').value = item.description || '';
+    document.getElementById('itemPrice').value = item.price || '';
+    document.getElementById('itemIcon').value = item.icon || '';
+    document.getElementById('itemCategory').value = item.category || 'score';
+    document.getElementById('itemCollection').value = item.collection || '';
+    document.getElementById('itemSubCollection').value = item.subCollection || '';
+    document.getElementById('itemThumb').value = item.thumbnailUrl || '';
+    document.getElementById('itemFileUrl').value = item.fileUrl || '';
+    document.getElementById('itemAccess').value = item.access || 'paid';
+
+    if (item.thumbnailUrl) {
+      document.getElementById('imagePreview').innerHTML = `<img src="${item.thumbnailUrl}" style="width:100%;height:100%;object-fit:cover">`;
+    }
+    document.getElementById('itemModal').classList.add('open');
+  };
+
+  window.closeItemModal = () => document.getElementById('itemModal').classList.remove('open');
+
   window.deleteItem = async (id, title) => {
-    if (!confirm(`Delete "${title}"?`)) return;
-    await MarketplaceService.delete(id);
-    allItems = allItems.filter(i => i.id !== id);
-    renderItems();
+    if (!confirm(`Permanently delete "${title}"?`)) return;
+    try {
+      await MarketplaceService.delete(id);
+      allItems = allItems.filter(i => i.id !== id);
+      renderItems();
+      showToast("Item deleted");
+    } catch (e) { showToast(e.message, "error"); }
   };
 
-  window.openUnlockModal = () => document.getElementById('unlockModal').classList.add('open');
-  window.closeUnlockModal = () => document.getElementById('unlockModal').classList.remove('open');
-  window.grantAccess = async () => { /* Logic here */ };
-  window.toggleSidebar = () => document.getElementById('sidebar').classList.toggle('mobile-open');
-  window.handleLogout = () => AuthService.logout();
-  window.showToast = (msg, type = 'info') => {
-    const t = document.createElement('div');
-    t.className = `toast ${type}`;
-    t.textContent = msg;
-    document.getElementById('toast-container').appendChild(t);
-    setTimeout(() => t.remove(), 4000);
-  };
-
-  init();
-</script>
-
-</body>
+  window.grantAccess = async () => {
+    const userId = document.getElementById('unlockUserId').value;
+    const itemId = document.getElementById('unlockItemId').value;
+    if (!userId || !itemId) </body>
 </html>
