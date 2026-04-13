@@ -156,65 +156,169 @@
 
 <script type="module">
   import { AuthService } from './auth.js';
-  import { UserService } from './db.js';
-  import { db, functions } from './config.js';
+  import { UserService, NotificationService } from './db.js';
+  import { db } from './config.js';
 
   let allUsers = [];
 
   const TYPE_ICONS = {
-    announcement: '📢', code: '🎟️', subscription: '💎', lesson: '📚', reminder: '⏰'
+    announcement: '📢', 
+    code: '🎟️', 
+    subscription: '💎', 
+    lesson: '📚', 
+    reminder: '⏰'
   };
 
+  /**
+   * INITIALIZE PAGE
+   */
   async function init() {
-    await AuthService.requireAdmin();
-    document.getElementById('pageLoader').classList.add('hidden');
-    allUsers = await UserService.getAll();
+    try {
+      await AuthService.requireAdmin();
+      
+      // Load users first so we can map IDs to names in the log
+      allUsers = await UserService.getAll();
 
-    // Populate user select
-    const sel = document.getElementById('notifUserId');
-    allUsers.forEach(u => {
-      sel.innerHTML += `<option value="${u.id}">${u.displayName || u.email}</option>`;
-    });
+      // Populate user select dropdown
+      const sel = document.getElementById('notifUserId');
+      sel.innerHTML = '<option value="">Choose user...</option>';
+      allUsers.forEach(u => {
+        const name = u.displayName || u.email;
+        sel.innerHTML += `<option value="${u.id}">${name}</option>`;
+      });
 
-    loadNotifLog();
-    setupPreviewListeners();
+      document.getElementById('pageLoader').classList.add('hidden');
+      loadNotifLog();
+      setupPreviewListeners();
+    } catch (e) {
+      console.error("Initialization failed:", e);
+      showToast("Failed to load admin data", "error");
+    }
   }
 
+  /**
+   * LOAD NOTIFICATION HISTORY
+   */
   async function loadNotifLog() {
-    const snap = await db.collection('notifications').orderBy('createdAt', 'desc').limit(50).get();
-    const notifs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    document.getElementById('notifCount').textContent = `${notifs.length} recent notifications`;
+    try {
+      const snap = await db.collection('notifications')
+        .orderBy('createdAt', 'desc')
+        .limit(50)
+        .get();
+        
+      const notifs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      document.getElementById('notifCount').textContent = `${notifs.length} recent notifications`;
 
-    const log = document.getElementById('notifLog');
-    if (!notifs.length) {
-      log.innerHTML = `<div class="empty-state" style="padding:50px"><div class="empty-icon">🔔</div><div class="empty-title">No notifications sent yet</div></div>`;
-      return;
+      const log = document.getElementById('notifLog');
+      if (!notifs.length) {
+        log.innerHTML = `
+          <div class="empty-state" style="padding:50px">
+            <div class="empty-icon">🔔</div>
+            <div class="empty-title">No notifications sent yet</div>
+          </div>`;
+        return;
+      }
+
+      log.innerHTML = `
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Title</th>
+              <th>Message</th>
+              <th>Recipient</th>
+              <th>Read</th>
+              <th>Sent</th>
+            </tr>
+          </thead>
+          <tbody>
+          ${notifs.map(n => {
+            const user = allUsers.find(u => u.id === n.userId);
+            const recipientName = user ? (user.displayName || user.email) : (n.userId === 'all' ? '📢 All Users' : 'Unknown');
+            
+            return `
+              <tr>
+                <td><span style="font-size:1.25rem">${TYPE_ICONS[n.type] || '🔔'}</span></td>
+                <td style="font-weight:600;font-size:0.875rem">${n.title || '—'}</td>
+                <td style="font-size:0.8125rem;color:var(--text-secondary);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${n.message}">
+                  ${n.message || '—'}
+                </td>
+                <td style="font-size:0.8125rem">${recipientName}</td>
+                <td><span class="badge badge-${n.read ? 'gray' : 'blue'}">${n.read ? 'Read' : 'Unread'}</span></td>
+                <td style="font-size:0.8125rem;color:var(--text-muted)">${formatDate(n.createdAt)}</td>
+              </tr>
+            `;
+          }).join('')}
+          </tbody>
+        </table>
+      `;
+    } catch (e) {
+      console.error("Error loading log:", e);
+    }
+  }
+
+  /**
+   * SEND LOGIC (Direct Firestore Write)
+   */
+  window.sendNotification = async () => {
+    const target = document.getElementById('notifTarget').value;
+    const specificUserId = document.getElementById('notifUserId').value;
+    const title = document.getElementById('notifTitle').value.trim();
+    const message = document.getElementById('notifMessage').value.trim();
+    const type = document.getElementById('notifType').value;
+
+    if (!title || !message) { 
+      showToast('Title and message are required', 'error'); 
+      return; 
+    }
+    if (target === 'specific' && !specificUserId) { 
+      showToast('Please select a user', 'error'); 
+      return; 
     }
 
-    log.innerHTML = `
-      <table class="data-table">
-        <thead><tr>
-          <th>Type</th><th>Title</th><th>Message</th><th>Recipient</th><th>Read</th><th>Sent</th>
-        </tr></thead>
-        <tbody>
-        ${notifs.map(n => {
-          const user = allUsers.find(u => u.id === n.userId);
-          return `
-            <tr>
-              <td><span style="font-size:1.25rem">${TYPE_ICONS[n.type] || '🔔'}</span></td>
-              <td style="font-weight:600;font-size:0.875rem">${n.title || '—'}</td>
-              <td style="font-size:0.8125rem;color:var(--text-secondary);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${n.message || '—'}</td>
-              <td style="font-size:0.8125rem">${user ? (user.displayName || user.email) : (n.userId === 'all' ? '📢 All Users' : n.userId?.slice(0,10) + '...')}</td>
-              <td><span class="badge badge-${n.read ? 'gray' : 'blue'}">${n.read ? 'Read' : 'Unread'}</span></td>
-              <td style="font-size:0.8125rem;color:var(--text-muted)">${formatDate(n.createdAt)}</td>
-            </tr>
-          `;
-        }).join('')}
-        </tbody>
-      </table>
-    `;
-  }
+    const btn = document.getElementById('sendBtn');
+    const btnText = document.getElementById('sendBtnText');
+    btn.disabled = true;
+    btnText.textContent = 'Sending...';
 
+    try {
+      const notifData = { 
+        title, 
+        message, 
+        type, 
+        read: false, 
+        createdAt: firebase.firestore.FieldValue.serverTimestamp() 
+      };
+
+      if (target === 'all') {
+        // Use a Batch to send to everyone (Max 500 users per batch)
+        const batch = db.batch();
+        allUsers.forEach(user => {
+          const newRef = db.collection('notifications').doc();
+          batch.set(newRef, { ...notifData, userId: user.id });
+        });
+        await batch.commit();
+        showToast(`Broadcast sent to ${allUsers.length} users!`, 'success');
+      } else {
+        // Direct individual send via Service
+        await NotificationService.send(specificUserId, notifData);
+        showToast('Notification sent!', 'success');
+      }
+
+      closeSendModal();
+      loadNotifLog();
+    } catch (e) {
+      console.error(e);
+      showToast('Error: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btnText.textContent = 'Send Notification';
+    }
+  };
+
+  /**
+   * UI HELPERS
+   */
   window.toggleUserSelect = () => {
     const val = document.getElementById('notifTarget').value;
     document.getElementById('specificUserField').style.display = val === 'specific' ? 'block' : 'none';
@@ -222,18 +326,16 @@
 
   function setupPreviewListeners() {
     ['notifTitle','notifMessage','notifType'].forEach(id => {
-      document.getElementById(id).addEventListener('input', updatePreview);
-      document.getElementById(id).addEventListener('change', updatePreview);
+      const el = document.getElementById(id);
+      el.addEventListener('input', updatePreview);
+      el.addEventListener('change', updatePreview);
     });
   }
 
   function updatePreview() {
-    const title = document.getElementById('notifTitle').value || 'Title';
-    const message = document.getElementById('notifMessage').value || 'Message';
-    const type = document.getElementById('notifType').value;
-    document.getElementById('previewTitle').textContent = title;
-    document.getElementById('previewMessage').textContent = message;
-    document.getElementById('previewIcon').textContent = TYPE_ICONS[type] || '🔔';
+    document.getElementById('previewTitle').textContent = document.getElementById('notifTitle').value || 'Title';
+    document.getElementById('previewMessage').textContent = document.getElementById('notifMessage').value || 'Message';
+    document.getElementById('previewIcon').textContent = TYPE_ICONS[document.getElementById('notifType').value] || '🔔';
   }
 
   window.openSendModal = () => {
@@ -247,32 +349,6 @@
 
   window.closeSendModal = () => document.getElementById('sendModal').classList.remove('open');
 
-  window.sendNotification = async () => {
-    const target = document.getElementById('notifTarget').value;
-    const userId = target === 'all' ? 'all' : document.getElementById('notifUserId').value;
-    const title = document.getElementById('notifTitle').value.trim();
-    const message = document.getElementById('notifMessage').value.trim();
-    const type = document.getElementById('notifType').value;
-
-    if (!title || !message) { showToast('Title and message are required', 'error'); return; }
-    if (target === 'specific' && !userId) { showToast('Please select a user', 'error'); return; }
-
-    document.getElementById('sendBtn').disabled = true;
-    document.getElementById('sendBtnText').textContent = 'Sending...';
-
-    try {
-      const sendFn = functions.httpsCallable('sendNotification');
-      await sendFn({ userId, title, message, type });
-      showToast(target === 'all' ? `Sent to all ${allUsers.length} users!` : 'Notification sent!', 'success');
-      closeSendModal();
-      loadNotifLog();
-    } catch(e) {
-      showToast('Error: ' + e.message, 'error');
-    }
-    document.getElementById('sendBtn').disabled = false;
-    document.getElementById('sendBtnText').textContent = 'Send Notification';
-  };
-
   function formatDate(ts) {
     if (!ts) return '—';
     const d = ts.toDate ? ts.toDate() : new Date(ts);
@@ -280,16 +356,21 @@
   }
 
   window.toggleSidebar = () => document.getElementById('sidebar').classList.toggle('mobile-open');
+  
   window.handleLogout = () => AuthService.logout();
+
   window.showToast = (msg, type = 'info') => {
+    const container = document.getElementById('toast-container');
     const t = document.createElement('div');
     t.className = `toast ${type}`;
     t.textContent = msg;
-    document.getElementById('toast-container').appendChild(t);
+    container.appendChild(t);
     setTimeout(() => t.remove(), 4000);
   };
 
+  // Start the engine
   init();
 </script>
+
 </body>
 </html>
