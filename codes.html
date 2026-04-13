@@ -163,7 +163,6 @@
 <script type="module">
   import { AuthService } from './auth.js';
   import { PaymentCodeService, UserService } from './db.js';
-  import { functions } from './config.js';
 
   let allCodes = [], allUsers = [], currentAdminId = null;
 
@@ -172,11 +171,14 @@
     currentAdminId = user.uid;
     document.getElementById('pageLoader').classList.add('hidden');
 
-    // Pre-select user if in URL
     const params = new URLSearchParams(window.location.search);
     const userId = params.get('userId');
     if (userId) document.getElementById('codeUserId').value = userId;
 
+    await refreshData();
+  }
+
+  async function refreshData() {
     [allCodes, allUsers] = await Promise.all([
       PaymentCodeService.getAll(),
       UserService.getAll()
@@ -184,6 +186,71 @@
     updateStats();
     renderCodes(allCodes);
   }
+
+  // Helper to generate a unique random string
+  function generateRandomCode(length = 12) {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excluded similar looking chars (I, 1, O, 0)
+    let result = '';
+    for (let i = 0; i < length; i++) {
+      if (i > 0 && i % 4 === 0) result += '-'; // Format as XXXX-XXXX-XXXX
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  }
+
+  window.generateCode = async () => {
+    const plan = document.getElementById('codePlan').value;
+    const assignedUserId = document.getElementById('codeUserId').value.trim() || null;
+    const expiryDays = parseInt(document.getElementById('codeExpiry').value) || null;
+
+    const generateBtn = document.getElementById('generateBtn');
+    const btnText = document.getElementById('generateBtnText');
+
+    generateBtn.disabled = true;
+    btnText.textContent = 'Generating & Saving...';
+
+    try {
+      // 1. Generate the unique code locally
+      const newCodeString = generateRandomCode();
+
+      // 2. Calculate expiry date if provided
+      let expiresAt = null;
+      if (expiryDays) {
+        expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + expiryDays);
+      }
+
+      // 3. Create the object for Firestore
+      const codeData = {
+        code: newCodeString,
+        plan: plan,
+        assignedUserId: assignedUserId,
+        status: 'unused',
+        expiresAt: expiresAt,
+        createdAt: new Date(),
+        createdBy: currentAdminId
+      };
+
+      // 4. Save directly to database
+      await PaymentCodeService.add(codeData);
+
+      // 5. Update UI
+      document.getElementById('generatedCodeValue').textContent = newCodeString;
+      document.getElementById('generatedCodeDisplay').style.display = 'block';
+      showToast('Code generated and saved to database!', 'success');
+
+      // Refresh list
+      await refreshData();
+    } catch (e) {
+      console.error(e);
+      showToast('Error saving code: ' + e.message, 'error');
+    } finally {
+      generateBtn.disabled = false;
+      btnText.textContent = 'Generate Code';
+    }
+  };
+
+  // --- UI AND FILTERING LOGIC ---
 
   function updateStats() {
     document.getElementById('statTotal').textContent = allCodes.length;
@@ -195,7 +262,7 @@
   function getUserName(uid) {
     if (!uid) return '—';
     const u = allUsers.find(u => u.id === uid);
-    return u ? (u.displayName || u.email) : uid.slice(0, 12) + '...';
+    return u ? (u.displayName || u.email) : 'User: ' + uid.slice(0, 6);
   }
 
   function renderCodes(codes) {
@@ -207,32 +274,23 @@
     container.innerHTML = `
       <table class="data-table">
         <thead><tr>
-          <th>Code</th><th>Plan</th><th>Assigned To</th><th>Status</th><th>Expires</th><th>Created</th><th>Actions</th>
+          <th>Code</th><th>Plan</th><th>Assigned To</th><th>Status</th><th>Expires</th><th>Actions</th>
         </tr></thead>
         <tbody>
         ${codes.map(c => `
           <tr>
             <td>
-              <span style="font-family:'Space Mono',monospace;font-weight:700;font-size:0.9375rem;color:var(--azure);cursor:pointer" onclick="copyText('${c.code}')" title="Click to copy">
+              <span style="font-family:'Space Mono',monospace;font-weight:700;color:var(--azure);cursor:pointer" onclick="copyText('${c.code}')">
                 ${c.code}
               </span>
             </td>
-            <td>
-              <span class="badge badge-${c.plan === 'premium' ? 'premium' : 'course'}">
-                ${c.plan === 'premium' ? '👑' : '📚'} ${c.plan}
-              </span>
-            </td>
-            <td style="font-size:0.8125rem">${getUserName(c.assignedUserId)}</td>
-            <td>
-              <span class="badge badge-${c.status === 'unused' ? 'green' : 'gray'}">
-                ${c.status === 'unused' ? '✅ Unused' : '✔️ Used'}
-              </span>
-            </td>
-            <td style="font-size:0.8125rem;color:var(--text-muted)">${c.expiresAt ? formatDate(c.expiresAt) : 'No expiry'}</td>
-            <td style="font-size:0.8125rem;color:var(--text-muted)">${formatDate(c.createdAt)}</td>
+            <td><span class="badge badge-${c.plan === 'premium' ? 'premium' : 'course'}">${c.plan}</span></td>
+            <td>${getUserName(c.assignedUserId)}</td>
+            <td><span class="badge badge-${c.status === 'unused' ? 'green' : 'gray'}">${c.status}</span></td>
+            <td style="font-size:0.8rem">${formatDate(c.expiresAt)}</td>
             <td>
               <button class="btn btn-sm" style="color:var(--error)" onclick="deleteCode('${c.id}','${c.code}')"
-                ${c.status === 'used' ? 'disabled title="Cannot delete used code"' : ''}>🗑️</button>
+                ${c.status === 'used' ? 'disabled' : ''}>🗑️</button>
             </td>
           </tr>
         `).join('')}
@@ -248,7 +306,7 @@
     const filtered = allCodes.filter(c => {
       const matchStatus = !status || c.status === status;
       const matchPlan = !plan || c.plan === plan;
-      const matchQ = !q || c.code.toLowerCase().includes(q) || getUserName(c.assignedUserId).toLowerCase().includes(q);
+      const matchQ = !q || c.code.toLowerCase().includes(q);
       return matchStatus && matchPlan && matchQ;
     });
     renderCodes(filtered);
@@ -256,63 +314,32 @@
 
   window.openGenerateModal = () => {
     document.getElementById('generatedCodeDisplay').style.display = 'none';
-    document.getElementById('codePlan').value = 'course';
-    document.getElementById('codeExpiry').value = '';
     document.getElementById('generateModal').classList.add('open');
   };
 
   window.closeGenerateModal = () => document.getElementById('generateModal').classList.remove('open');
 
-  window.generateCode = async () => {
-    const plan = document.getElementById('codePlan').value;
-    const assignedUserId = document.getElementById('codeUserId').value.trim() || null;
-    const expiryDays = parseInt(document.getElementById('codeExpiry').value) || null;
-
-    document.getElementById('generateBtn').disabled = true;
-    document.getElementById('generateBtnText').textContent = 'Generating...';
-
-    try {
-      const genFn = functions.httpsCallable('generatePaymentCode');
-      const result = await genFn({ plan, assignedUserId, expiryDays });
-      const code = result.data.code;
-
-      document.getElementById('generatedCodeValue').textContent = code;
-      document.getElementById('generatedCodeDisplay').style.display = 'block';
-      showToast('Code generated: ' + code, 'success');
-
-      // Refresh list
-      allCodes = await PaymentCodeService.getAll();
-      updateStats();
-      renderCodes(allCodes);
-    } catch(e) {
-      showToast('Error: ' + e.message, 'error');
-    }
-    document.getElementById('generateBtn').disabled = false;
-    document.getElementById('generateBtnText').textContent = 'Generate Code';
-  };
-
-  window.copyCode = () => {
-    const code = document.getElementById('generatedCodeValue').textContent;
-    copyText(code);
-  };
-
+  window.copyCode = () => copyText(document.getElementById('generatedCodeValue').textContent);
+  
   window.copyText = (text) => {
     navigator.clipboard.writeText(text).then(() => showToast('Copied: ' + text, 'success'));
   };
 
   window.deleteCode = async (id, code) => {
-    if (!confirm(`Delete code "${code}"? This cannot be undone.`)) return;
-    await PaymentCodeService.delete ? await PaymentCodeService.delete(id) : null;
-    allCodes = allCodes.filter(c => c.id !== id);
-    updateStats();
-    renderCodes(allCodes);
-    showToast('Code deleted', 'success');
+    if (!confirm(`Delete code "${code}"?`)) return;
+    try {
+      await PaymentCodeService.delete(id);
+      showToast('Code deleted', 'success');
+      await refreshData();
+    } catch (e) {
+      showToast('Error deleting: ' + e.message, 'error');
+    }
   };
 
   function formatDate(ts) {
-    if (!ts) return '—';
+    if (!ts) return 'No expiry';
     const d = ts.toDate ? ts.toDate() : new Date(ts);
-    return d.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+    return d.toLocaleDateString('en-GB', { day:'2-digit', month:'short' });
   }
 
   window.toggleSidebar = () => document.getElementById('sidebar').classList.toggle('mobile-open');
@@ -322,10 +349,11 @@
     t.className = `toast ${type}`;
     t.textContent = msg;
     document.getElementById('toast-container').appendChild(t);
-    setTimeout(() => t.remove(), 4000);
+    setTimeout(() => t.remove(), 3000);
   };
 
   init();
 </script>
+
 </body>
 </html>
