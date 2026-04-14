@@ -135,19 +135,26 @@
           </div>
 
           <!-- Image block -->
-          <div id="field-image" style="display:none">
-            <div class="form-group">
-              <label class="form-label">Cloudinary Image URL</label>
-              <input type="url" id="blockImageUrl" class="form-input" placeholder="https://res.cloudinary.com/..." />
-            </div>
-            <div class="form-group mt-12">
-              <label class="form-label">Caption (optional)</label>
-              <input type="text" id="blockCaption" class="form-input" placeholder="Image caption..." />
-            </div>
-            <div id="imagePreview" style="margin-top:12px;display:none">
-              <img id="imagePreviewImg" src="" alt="preview" style="max-height:160px;border-radius:var(--r-md);object-fit:cover" />
-            </div>
-          </div>
+         <div id="field-image" style="display:none">
+  <div class="form-group">
+    <label class="form-label">Upload Image</label>
+    <div class="upload-zone" onclick="document.getElementById('blockImageFile').click()" style="cursor:pointer; border:2px dashed #30363D; padding:20px; text-align:center; border-radius:12px">
+      <div id="imageUploadStatus">Click to select from device</div>
+      <input type="file" id="blockImageFile" hidden accept="image/*" onchange="handleBlockImageUpload(this)">
+    </div>
+    <input type="hidden" id="blockImageUrl">
+  </div>
+  
+  <div class="form-group mt-12">
+    <label class="form-label">Caption (optional)</label>
+    <input type="text" id="blockCaption" class="form-input" placeholder="Image caption..." />
+  </div>
+  
+  <div id="imagePreview" style="margin-top:12px; display:none; text-align:center">
+    <img id="imagePreviewImg" src="" alt="preview" style="max-height:160px; border-radius:8px; border:1px solid #30363D" />
+  </div>
+</div>
+
 
           <!-- Table block -->
           <div id="field-table" style="display:none">
@@ -216,6 +223,7 @@
 <script type="module">
   import { AuthService } from './auth.js';
   import { CourseService, LessonService, ContentBlockService } from './db.js';
+  import { db } from './config.js'; 
 
   let courses = [], lessonsMap = {}, currentLessonId = null, editingBlockId = null;
   let selectedType = null;
@@ -230,6 +238,9 @@
     note:      { icon: '📌', name: 'Note / Callout' }
   };
 
+  /**
+   * INITIALIZE
+   */
   async function init() {
     await AuthService.requireAdmin();
     courses = await CourseService.getAll();
@@ -239,7 +250,6 @@
     sel.innerHTML = `<option value="">Choose course...</option>` +
       courses.map(c => `<option value="${c.id}">${c.title}</option>`).join('');
 
-    // Pre-select from URL
     const params = new URLSearchParams(window.location.search);
     const lessonId = params.get('lessonId');
     if (lessonId) {
@@ -253,12 +263,53 @@
     }
   }
 
+  /**
+   * DIRECT IMAGE UPLOAD TO CLOUDINARY
+   */
+  window.handleBlockImageUpload = async (input) => {
+    const file = input.files[0];
+    if (!file) return;
+
+    const statusText = document.getElementById('imageUploadStatus');
+    const preview = document.getElementById('imagePreview');
+    const imgTag = document.getElementById('imagePreviewImg');
+    const urlInput = document.getElementById('blockImageUrl');
+
+    statusText.innerHTML = '⌛ Uploading...';
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', "SamLouis"); // Your preset name
+
+    try {
+      const res = await fetch("https://api.cloudinary.com/v1_1/dhetav9az/auto/upload", { 
+        method: 'POST', 
+        body: formData 
+      });
+      const data = await res.json();
+      
+      if (data.secure_url) {
+        urlInput.value = data.secure_url;
+        imgTag.src = data.secure_url;
+        preview.style.display = 'block';
+        statusText.innerHTML = '✅ Upload successful';
+        showToast("Image uploaded!", "success");
+      } else {
+        throw new Error(data.error?.message || "Upload failed");
+      }
+    } catch (e) {
+      statusText.innerHTML = '❌ Upload failed';
+      showToast("Error: " + e.message, "error");
+    }
+  };
+
   window.onCourseChange = async () => {
     const courseId = document.getElementById('courseSelect').value;
     const lessonSel = document.getElementById('lessonSelect');
     lessonSel.innerHTML = `<option value="">Choose lesson...</option>`;
     currentLessonId = null;
     document.getElementById('blockList').innerHTML = `<div class="empty-state"><div class="empty-icon">📖</div><div class="empty-sub">Select a lesson to manage its blocks.</div></div>`;
+    
     if (!courseId) return;
     const lessons = await LessonService.getByCourse(courseId);
     lessons.forEach(l => {
@@ -271,54 +322,76 @@
     currentLessonId = document.getElementById('lessonSelect').value;
     if (!currentLessonId) return;
     const lesson = lessonsMap[currentLessonId];
-    document.getElementById('headerLessonName').textContent = lesson?.title || currentLessonId;
+    document.getElementById('headerLessonName').textContent = lesson?.title || "Lesson Editor";
     loadBlocks();
   };
 
+  /**
+   * LOAD & RENDER BLOCKS
+   */
   async function loadBlocks() {
     if (!currentLessonId) return;
-    const blocks = await ContentBlockService.getByLesson(currentLessonId);
     const container = document.getElementById('blockList');
+    container.innerHTML = `<div style="padding:40px;text-align:center"><div class="spinner" style="margin:0 auto"></div></div>`;
 
-    if (!blocks.length) {
-      container.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-icon">📝</div>
-          <div class="empty-title">No content blocks</div>
-          <div class="empty-sub">Click "+ Add Block" to build this lesson's content.</div>
+    try {
+      const blocks = await ContentBlockService.getByLesson(currentLessonId);
+      blocks.sort((a, b) => (a.position || 0) - (b.position || 0));
+
+      if (!blocks.length) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">📝</div>
+            <div class="empty-title">No content blocks</div>
+            <div class="empty-sub">Click "+ Add Block" to build this lesson's content.</div>
+          </div>`;
+        return;
+      }
+
+      container.innerHTML = blocks.map(b => `
+        <div class="block-item" id="block-${b.id}">
+          <div class="block-drag-handle">⠿</div>
+          <div class="block-type-icon">${TYPE_META[b.type]?.icon || '📄'}</div>
+          <div class="block-info">
+            <div class="block-name">
+                ${TYPE_META[b.type]?.name || b.type} 
+                <span style="font-weight:400; color:var(--text-muted); font-size:0.7rem; margin-left:8px">Pos: ${b.position || 0}</span>
+            </div>
+            <div class="block-preview">${blockPreview(b)}</div>
+          </div>
+          <span class="badge badge-${b.lock === 'premium' ? 'premium' : b.lock === 'course' ? 'course' : 'green'}" style="flex-shrink:0; margin:0 12px">
+            ${b.lock === 'premium' ? '👑' : b.lock === 'course' ? '🔵' : '🟢'} ${b.lock || 'free'}
+          </span>
+          <div class="block-actions">
+            <button class="btn btn-ghost btn-sm" onclick="editBlock('${b.id}')">✏️ Edit</button>
+            <button class="btn btn-sm" style="color:var(--error)" onclick="deleteBlock('${b.id}')">🗑️</button>
+          </div>
         </div>
-      `;
-      return;
+      `).join('');
+    } catch (e) {
+      showToast("Error loading blocks: " + e.message, "error");
     }
-
-    container.innerHTML = blocks.map(b => `
-      <div class="block-item" id="block-${b.id}">
-        <div class="block-drag-handle">⠿</div>
-        <div class="block-type-icon">${TYPE_META[b.type]?.icon || '📄'}</div>
-        <div class="block-info">
-          <div class="block-name">${TYPE_META[b.type]?.name || b.type}</div>
-          <div class="block-preview">${blockPreview(b)}</div>
-        </div>
-        <span class="badge badge-${b.lock === 'premium' ? 'premium' : b.lock === 'course' ? 'course' : 'green'}" style="flex-shrink:0">
-          ${b.lock === 'premium' ? '👑' : b.lock === 'course' ? '🔵' : '🟢'} ${b.lock || 'free'}
-        </span>
-        <div class="block-actions">
-          <button class="btn btn-ghost btn-sm" onclick="editBlock('${b.id}')">✏️</button>
-          <button class="btn btn-sm" style="color:var(--error)" onclick="deleteBlock('${b.id}')">🗑️</button>
-        </div>
-      </div>
-    `).join('');
   }
 
   function blockPreview(b) {
-    if (b.type === 'image') return b.url ? `<img src="${b.url}" style="height:20px;width:30px;object-fit:cover;border-radius:3px;display:inline-block;vertical-align:middle"> ${b.caption || b.url.slice(-30)}` : 'No URL';
-    if (b.type === 'table') return `Table: ${b.tableData?.headers?.join(', ') || ''}`;
-    if (b.type === 'container') return b.title || b.content || '';
-    return (b.content || '').slice(0, 80);
+    if (b.type === 'image') {
+      return b.url ? `<img src="${b.url}" style="height:18px;width:28px;object-fit:cover;border-radius:2px;vertical-align:middle;margin-right:6px"> ${b.caption || 'Image content'}` : 'No image URL provided';
+    }
+    if (b.type === 'table') {
+      const colCount = b.tableData?.headers?.length || 0;
+      const rowCount = b.tableData?.rows?.length || 0;
+      return `Table: ${colCount} columns, ${rowCount} rows`;
+    }
+    if (b.type === 'container') return `<strong>${b.title || 'Container'}:</strong> ${b.content || ''}`;
+    if (b.type === 'heading') return `Heading: ${b.content || ''}`;
+    
+    const content = b.content || '';
+    return content.length > 80 ? content.slice(0, 80) + '...' : content;
   }
 
-  // ─── TYPE SELECTOR ───────────────────────────────────────────
-
+  /**
+   * TYPE SELECTOR
+   */
   window.selectType = (type) => {
     selectedType = type;
     document.getElementById('typeSelector').style.display = 'none';
@@ -329,10 +402,10 @@
     document.getElementById('blockTypeIcon').textContent = meta.icon;
     document.getElementById('blockTypeName').textContent = meta.name;
 
-    // Hide all fields, show relevant
-    ['text','heading','image','table','container','note'].forEach(t =>
-      document.getElementById(`field-${t}`).style.display = 'none'
-    );
+    ['text','heading','image','table','container','note'].forEach(t => {
+      const el = document.getElementById(`field-${t}`);
+      if(el) el.style.display = 'none';
+    });
     document.getElementById(`field-${type}`).style.display = 'block';
 
     if (type === 'table') renderTableEditor();
@@ -345,19 +418,20 @@
     document.getElementById('saveBlockBtn').style.display = 'none';
   };
 
-  // ─── TABLE EDITOR ────────────────────────────────────────────
-
+  /**
+   * TABLE EDITOR
+   */
   function renderTableEditor() {
     const tbl = document.getElementById('tableEditor');
     tbl.innerHTML = `
       <thead><tr>
-        ${tableData.headers.map((h,i) => `<th><input value="${h}" oninput="tableData.headers[${i}]=this.value" /></th>`).join('')}
-        <th><button class="btn btn-ghost btn-sm" style="color:var(--error)" onclick="removeTableCol()">✕ Col</button></th>
+        ${tableData.headers.map((h,i) => `<th><input value="${h}" oninput="tableData.headers[${i}]=this.value" class="form-input" style="padding:4px" /></th>`).join('')}
+        <th></th>
       </tr></thead>
       <tbody>
         ${tableData.rows.map((row, ri) => `
           <tr>
-            ${row.map((cell, ci) => `<td><input value="${cell}" oninput="tableData.rows[${ri}][${ci}]=this.value" /></td>`).join('')}
+            ${row.map((cell, ci) => `<td><input value="${cell}" oninput="tableData.rows[${ri}][${ci}]=this.value" class="form-input" style="padding:4px" /></td>`).join('')}
             <td><button class="btn btn-ghost btn-sm" style="color:var(--error)" onclick="removeTableRow(${ri})">✕</button></td>
           </tr>
         `).join('')}
@@ -365,51 +439,34 @@
     `;
   }
 
-  window.addTableRow = () => {
-    tableData.rows.push(new Array(tableData.headers.length).fill(''));
-    renderTableEditor();
-  };
-  window.addTableCol = () => {
-    tableData.headers.push(`Header ${tableData.headers.length + 1}`);
-    tableData.rows.forEach(r => r.push(''));
-    renderTableEditor();
-  };
+  window.addTableRow = () => { tableData.rows.push(new Array(tableData.headers.length).fill('')); renderTableEditor(); };
+  window.addTableCol = () => { tableData.headers.push(`Header ${tableData.headers.length + 1}`); tableData.rows.forEach(r => r.push('')); renderTableEditor(); };
   window.removeTableRow = (i) => { tableData.rows.splice(i, 1); renderTableEditor(); };
   window.removeTableCol = () => {
     if (tableData.headers.length <= 1) return;
-    tableData.headers.pop();
-    tableData.rows.forEach(r => r.pop());
-    renderTableEditor();
+    tableData.headers.pop(); tableData.rows.forEach(r => r.pop()); renderTableEditor();
   };
 
-  // Image preview
-  document.addEventListener('input', e => {
-    if (e.target.id === 'blockImageUrl') {
-      const url = e.target.value.trim();
-      const preview = document.getElementById('imagePreview');
-      const img = document.getElementById('imagePreviewImg');
-      if (url) { img.src = url; preview.style.display = 'block'; }
-      else { preview.style.display = 'none'; }
-    }
-  });
-
-  // ─── OPEN / EDIT ─────────────────────────────────────────────
-
+  /**
+   * OPEN / EDIT MODAL
+   */
   window.openAddBlock = () => {
     if (!currentLessonId) { showToast('Please select a lesson first', 'warning'); return; }
     editingBlockId = null;
     selectedType = null;
     tableData = { headers: ['Header 1', 'Header 2'], rows: [['', '']] };
+    
     document.getElementById('blockModalTitle').textContent = 'Add Content Block';
     document.getElementById('saveBlockText').textContent = 'Save Block';
-    document.getElementById('typeSelector').style.display = 'block';
-    document.getElementById('blockForm').style.display = 'none';
-    document.getElementById('saveBlockBtn').style.display = 'none';
+    resetTypeSelector();
+    
     document.getElementById('blockPosition').value = '0';
     document.getElementById('blockLock').value = 'free';
-    // Clear fields
+    
     ['blockText','blockHeading','blockImageUrl','blockCaption','blockContainerTitle','blockContainerContent','blockNote']
       .forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+    
+    document.getElementById('imageUploadStatus').textContent = 'Click to select image';
     document.getElementById('imagePreview').style.display = 'none';
     document.getElementById('blockModal').classList.add('open');
   };
@@ -418,22 +475,12 @@
     const blocks = await ContentBlockService.getByLesson(currentLessonId);
     const block = blocks.find(b => b.id === id);
     if (!block) return;
+    
     editingBlockId = id;
-    selectedType = block.type;
+    selectType(block.type);
+    
     document.getElementById('blockModalTitle').textContent = 'Edit Content Block';
     document.getElementById('saveBlockText').textContent = 'Update Block';
-    document.getElementById('typeSelector').style.display = 'none';
-    document.getElementById('blockForm').style.display = 'block';
-    document.getElementById('saveBlockBtn').style.display = 'inline-flex';
-
-    const meta = TYPE_META[block.type];
-    document.getElementById('blockTypeIcon').textContent = meta?.icon || '📄';
-    document.getElementById('blockTypeName').textContent = meta?.name || block.type;
-
-    ['text','heading','image','table','container','note'].forEach(t =>
-      document.getElementById(`field-${t}`).style.display = 'none'
-    );
-    document.getElementById(`field-${block.type}`).style.display = 'block';
     document.getElementById('blockPosition').value = block.position || 0;
     document.getElementById('blockLock').value = block.lock || 'free';
 
@@ -442,7 +489,11 @@
     if (block.type === 'image') {
       document.getElementById('blockImageUrl').value = block.url || '';
       document.getElementById('blockCaption').value = block.caption || '';
-      if (block.url) { document.getElementById('imagePreviewImg').src = block.url; document.getElementById('imagePreview').style.display = 'block'; }
+      if (block.url) { 
+          document.getElementById('imagePreviewImg').src = block.url; 
+          document.getElementById('imagePreview').style.display = 'block';
+          document.getElementById('imageUploadStatus').textContent = '✅ Image Uploaded';
+      }
     }
     if (block.type === 'table') {
       tableData = block.tableData || { headers: ['H1','H2'], rows: [['','']] };
@@ -459,15 +510,17 @@
 
   window.closeBlockModal = () => document.getElementById('blockModal').classList.remove('open');
 
-  // ─── SAVE ────────────────────────────────────────────────────
-
+  /**
+   * SAVE DATA
+   */
   window.saveBlock = async () => {
     if (!selectedType) { showToast('Choose a block type', 'warning'); return; }
 
-    let data = {
+    const data = {
       type: selectedType,
       position: parseInt(document.getElementById('blockPosition').value) || 0,
-      lock: document.getElementById('blockLock').value
+      lock: document.getElementById('blockLock').value,
+      updatedAt: new Date().toISOString()
     };
 
     if (selectedType === 'text') data.content = document.getElementById('blockText').value.trim();
@@ -475,7 +528,7 @@
     if (selectedType === 'image') {
       data.url = document.getElementById('blockImageUrl').value.trim();
       data.caption = document.getElementById('blockCaption').value.trim();
-      if (!data.url) { showToast('Image URL is required', 'error'); return; }
+      if (!data.url) { showToast('Please upload an image first', 'error'); return; }
     }
     if (selectedType === 'table') data.tableData = tableData;
     if (selectedType === 'container') {
@@ -484,30 +537,35 @@
     }
     if (selectedType === 'note') data.content = document.getElementById('blockNote').value.trim();
 
-    document.getElementById('saveBlockBtn').disabled = true;
+    const saveBtn = document.getElementById('saveBlockBtn');
+    saveBtn.disabled = true;
     document.getElementById('saveBlockText').textContent = 'Saving...';
 
     try {
       if (editingBlockId) {
         await ContentBlockService.update(editingBlockId, data);
+        showToast('Block updated!', 'success');
       } else {
         await ContentBlockService.create(currentLessonId, data);
+        showToast('Block created!', 'success');
       }
-      showToast('Block saved!', 'success');
       closeBlockModal();
       loadBlocks();
     } catch(e) {
       showToast('Error: ' + e.message, 'error');
+    } finally {
+      saveBtn.disabled = false;
+      document.getElementById('saveBlockText').textContent = editingBlockId ? 'Update Block' : 'Save Block';
     }
-    document.getElementById('saveBlockBtn').disabled = false;
-    document.getElementById('saveBlockText').textContent = editingBlockId ? 'Update Block' : 'Save Block';
   };
 
   window.deleteBlock = async (id) => {
-    if (!confirm('Delete this content block?')) return;
-    await ContentBlockService.delete(id);
-    showToast('Block deleted', 'success');
-    loadBlocks();
+    if (!confirm('Permanently delete this content block?')) return;
+    try {
+        await ContentBlockService.delete(id);
+        showToast('Block deleted', 'success');
+        loadBlocks();
+    } catch (e) { showToast('Delete failed: ' + e.message, 'error'); }
   };
 
   window.toggleSidebar = () => document.getElementById('sidebar').classList.toggle('mobile-open');
@@ -522,5 +580,7 @@
 
   init();
 </script>
+
+
 </body>
 </html>
