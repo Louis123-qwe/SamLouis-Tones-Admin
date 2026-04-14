@@ -909,3 +909,70 @@ select.form-input { cursor: pointer; }
     z-index: 401 !important; 
   }
 }
+
+
+/* Add this to your CSS */
+#blockList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.block-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: #161B22; /* Matches your topbar */
+  border: 1px solid #30363D;
+  border-radius: 12px;
+  transition: transform 0.2s, border-color 0.2s;
+}
+
+.block-item:hover {
+  border-color: var(--orange);
+  transform: translateY(-2px);
+}
+
+.block-drag-handle {
+  color: #484F58;
+  cursor: grab;
+  font-size: 1.2rem;
+}
+
+.block-type-icon {
+  width: 40px;
+  height: 40px;
+  background: #21262D;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+}
+
+.block-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.block-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: white;
+}
+
+.block-preview {
+  font-size: 0.8rem;
+  color: #8B949E;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 4px;
+}
+
+.block-actions {
+  display: flex;
+  gap: 8px;
+}
