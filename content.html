@@ -228,6 +228,8 @@
   let courses = [], lessonsMap = {}, currentLessonId = null, editingBlockId = null;
   let selectedType = null;
   let tableData = { headers: ['Header 1', 'Header 2'], rows: [['', '']] };
+window.tableData = tableData; // This makes it visible to oninput
+
 
   const TYPE_META = {
     text:      { icon: '📄', name: 'Text / Paragraph' },
@@ -422,22 +424,33 @@
    * TABLE EDITOR
    */
   function renderTableEditor() {
-    const tbl = document.getElementById('tableEditor');
-    tbl.innerHTML = `
-      <thead><tr>
-        ${tableData.headers.map((h,i) => `<th><input value="${h}" oninput="tableData.headers[${i}]=this.value" class="form-input" style="padding:4px" /></th>`).join('')}
-        <th></th>
-      </tr></thead>
-      <tbody>
-        ${tableData.rows.map((row, ri) => `
-          <tr>
-            ${row.map((cell, ci) => `<td><input value="${cell}" oninput="tableData.rows[${ri}][${ci}]=this.value" class="form-input" style="padding:4px" /></td>`).join('')}
-            <td><button class="btn btn-ghost btn-sm" style="color:var(--error)" onclick="removeTableRow(${ri})">✕</button></td>
-          </tr>
-        `).join('')}
-      </tbody>
-    `;
-  }
+  const tbl = document.getElementById('tableEditor');
+  tbl.innerHTML = `
+    <thead><tr>
+      ${tableData.headers.map((h, i) => `
+        <th>
+          <input value="${h}" 
+            oninput="window.tableData.headers[${i}]=this.value" 
+            class="form-input" style="padding:4px" />
+        </th>`).join('')}
+      <th></th>
+    </tr></thead>
+    <tbody>
+      ${tableData.rows.map((row, ri) => `
+        <tr>
+          ${row.map((cell, ci) => `
+            <td>
+              <input value="${cell}" 
+                oninput="window.tableData.rows[${ri}][${ci}]=this.value" 
+                class="form-input" style="padding:4px" />
+            </td>`).join('')}
+          <td><button class="btn btn-ghost btn-sm" style="color:var(--error)" onclick="removeTableRow(${ri})">✕</button></td>
+        </tr>
+      `).join('')}
+    </tbody>
+  `;
+}
+
 
   window.addTableRow = () => { tableData.rows.push(new Array(tableData.headers.length).fill('')); renderTableEditor(); };
   window.addTableCol = () => { tableData.headers.push(`Header ${tableData.headers.length + 1}`); tableData.rows.forEach(r => r.push('')); renderTableEditor(); };
@@ -495,10 +508,15 @@
           document.getElementById('imageUploadStatus').textContent = '✅ Image Uploaded';
       }
     }
-    if (block.type === 'table') {
-      tableData = block.tableData || { headers: ['H1','H2'], rows: [['','']] };
-      renderTableEditor();
-    }
+   if (block.type === 'table') {
+  const rawData = block.tableData || { headers: ['H1','H2'], rows: [] };
+  tableData = {
+    headers: rawData.headers,
+    rows: rawData.rows.map(r => r.cells || r) // Handles both old and new format
+  };
+  renderTableEditor();
+}
+
     if (block.type === 'container') {
       document.getElementById('blockContainerTitle').value = block.title || '';
       document.getElementById('blockContainerContent').value = block.content || '';
@@ -530,7 +548,14 @@
       data.caption = document.getElementById('blockCaption').value.trim();
       if (!data.url) { showToast('Please upload an image first', 'error'); return; }
     }
-    if (selectedType === 'table') data.tableData = tableData;
+    if (selectedType === 'table') {
+  // Convert array of arrays to array of objects to avoid the Firestore error
+  data.tableData = {
+    headers: tableData.headers,
+    rows: tableData.rows.map(row => ({ cells: row })) 
+  };
+}
+
     if (selectedType === 'container') {
       data.title = document.getElementById('blockContainerTitle').value.trim();
       data.content = document.getElementById('blockContainerContent').value.trim();
